@@ -1,0 +1,26 @@
+ticket_id,title,labels,milestone,phase,priority,target_date,release
+GRV-001,Freeze beta scope and mark R1 exclusions,product;beta,Beta Foundation,Foundation,P0,2026-07-08,Beta
+GRV-002,Define modular monolith boundaries and API contracts,architecture;beta,Beta Foundation,Foundation,P0,2026-07-10,Beta
+GRV-003,Provision beta infrastructure and CI CD baseline,devops;beta,Beta Foundation,Foundation,P0,2026-07-10,Beta
+GRV-004,Create multi module Maven Spring Boot backend skeleton,backend;architecture;beta,Beta Foundation,Foundation,P0,2026-07-11,Beta
+GRV-005,Implement signup login and session management,backend;auth;beta,Beta Identity,Identity,P0,2026-07-14,Beta
+GRV-006,Implement email and phone verification with Restricted to Active gate,backend;auth;beta,Beta Identity,Identity,P0,2026-07-15,Beta
+GRV-007,Implement profile basics and follow graph,backend;social;beta,Beta Identity,Identity,P1,2026-07-17,Beta
+GRV-008,Implement reel upload transcode and publish flow,backend;media;beta,Beta Reels and Feed,Reels,P0,2026-07-22,Beta
+GRV-009,Implement moderation gate before reel publish,backend;trust;beta,Beta Reels and Feed,Reels,P0,2026-07-23,Beta
+GRV-010,Implement reels feed and basic home feed,backend;feed;beta,Beta Reels and Feed,Reels,P0,2026-07-24,Beta
+GRV-011,Implement likes and basic comments,backend;engagement;beta,Beta Reels and Feed,Reels,P1,2026-07-24,Beta
+GRV-012,Implement playback session token service,backend;rewards;beta,Beta Rewards,Rewards,P0,2026-07-28,Beta
+GRV-013,Implement heartbeat validation and qualified view logic,backend;rewards;beta,Beta Rewards,Rewards,P0,2026-07-30,Beta
+GRV-014,Implement provisional wallet and earnings history,backend;wallet;beta,Beta Rewards,Rewards,P0,2026-07-31,Beta
+GRV-015,Implement reward config and budget guardrails,backend;rewards;admin;beta,Beta Rewards,Rewards,P0,2026-07-31,Beta
+GRV-016,Implement referral codes attribution and qualification,backend;referral;beta,Beta Referral and Trust,Trust,P0,2026-08-04,Beta
+GRV-017,Implement basic fraud rules for duplicate device and suspicious velocity,backend;fraud;beta,Beta Referral and Trust,Trust,P0,2026-08-05,Beta
+GRV-018,Implement minimal admin console for moderation and reward controls,admin;trust;beta,Beta Referral and Trust,Trust,P0,2026-08-07,Beta
+GRV-019,Implement essential push and transactional notifications,backend;notifications;beta,Beta Referral and Trust,Trust,P1,2026-08-07,Beta
+GRV-020,Complete end to end mobile QA and tamper test pass,qa;beta,Beta Stabilization,Stabilization,P0,2026-08-11,Beta
+GRV-021,Complete observability alerts dashboards and runbooks,devops;ops;beta,Beta Stabilization,Stabilization,P0,2026-08-12,Beta
+GRV-022,Prepare beta release candidate and store submission package,release;beta,Beta Stabilization,Stabilization,P0,2026-08-15,Beta
+GRV-023,Design KYC onboarding flow for payout activation,backend;kyc;release-r1,R1 Wallet Redemption,R1,P0,2026-08-29,R1
+GRV-024,Implement coin redemption and withdrawal requests,backend;wallet;release-r1,R1 Wallet Redemption,R1,P0,2026-09-05,R1
+GRV-025,Integrate PSP webhooks settlement and reconciliation,backend;finance;release-r1,R1 Wallet Redemption,R1,P0,2026-09-12,R1
