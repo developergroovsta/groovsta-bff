@@ -1,6 +1,40 @@
 spring:
   application:
     name: groovsta-api
+  datasource:
+    url: ${GROOVSTA_DATABASE_URL:jdbc:postgresql://localhost:5432/groovsta}
+    username: ${GROOVSTA_DATABASE_USERNAME:groovsta}
+    password: ${GROOVSTA_DATABASE_PASSWORD:groovsta}
+    driver-class-name: ${GROOVSTA_DATABASE_DRIVER:org.postgresql.Driver}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+identity:
+  auth:
+    session-ttl: 30d
+    email-verification-ttl: 15m
+    phone-verification-ttl: 10m
+    max-verification-attempts: 5
+    verification-pepper: ${IDENTITY_VERIFICATION_PEPPER:development-only-change-me}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
 
 management:
   endpoints:
