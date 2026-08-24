@@ -12,4 +12,10 @@ class IdentityProperties {
     var phoneVerificationTtl: Duration = Duration.ofMinutes(10)
     var maxVerificationAttempts: Int = 5
     var verificationPepper: String = ""
+    var google: GoogleAuthenticationProperties = GoogleAuthenticationProperties()
+
+    class GoogleAuthenticationProperties {
+        var enabled: Boolean = false
+        var registrationTtl: Duration = Duration.ofMinutes(10)
+    }
 }

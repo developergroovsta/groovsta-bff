@@ -10,7 +10,6 @@ import com.groovsta.identity.dto.request.SignupRequest
 import com.groovsta.identity.dto.response.AccountResponse
 import com.groovsta.identity.dto.response.AuthResponse
 import com.groovsta.identity.dto.response.DeviceMetadata
-import com.groovsta.identity.dto.response.SessionResponse
 import com.groovsta.identity.dto.response.VerificationChallengeResponse
 import com.groovsta.identity.exception.IdentityConflictException
 import com.groovsta.identity.exception.IdentityNotFoundException
@@ -18,27 +17,24 @@ import com.groovsta.identity.exception.InvalidCredentialsException
 import com.groovsta.identity.exception.InvalidVerificationException
 import com.groovsta.identity.model.Account
 import com.groovsta.identity.model.AccountStatus
-import com.groovsta.identity.model.Device
-import com.groovsta.identity.model.Session
 import com.groovsta.identity.model.VerificationChallenge
 import com.groovsta.identity.model.VerificationChannel
 import com.groovsta.identity.model.VerificationPurpose
 import com.groovsta.identity.repository.AccountRepository
-import com.groovsta.identity.repository.DeviceRepository
 import com.groovsta.identity.repository.ProfileRepository
 import com.groovsta.identity.repository.SessionRepository
 import com.groovsta.identity.repository.VerificationChallengeRepository
 import com.groovsta.identity.service.AuthenticationService
-import com.groovsta.identity.service.ProfileService
+import com.groovsta.identity.service.IdentitySessionService
 import com.groovsta.identity.service.VerificationDeliveryService
+import com.groovsta.shared.notification.PushTokenRevoker
+import com.groovsta.shared.reward.RewardEventPublisher
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.security.SecureRandom
 import java.time.Instant
-import java.util.Base64
 import java.util.Locale
 import java.util.UUID
 
@@ -46,16 +42,16 @@ import java.util.UUID
 class AuthenticationServiceImpl(
     private val accountRepository: AccountRepository,
     private val profileRepository: ProfileRepository,
-    private val deviceRepository: DeviceRepository,
     private val sessionRepository: SessionRepository,
     private val verificationChallengeRepository: VerificationChallengeRepository,
-    private val profileService: ProfileService,
+    private val identitySessionService: IdentitySessionService,
+    private val accountResponseAssembler: AccountResponseAssembler,
     private val passwordEncoder: PasswordEncoder,
     private val properties: IdentityProperties,
-    private val verificationDeliveryService: VerificationDeliveryService
+    private val verificationDeliveryService: VerificationDeliveryService,
+    private val pushTokenRevoker: PushTokenRevoker,
+    private val rewardEventPublisher: RewardEventPublisher
 ) : AuthenticationService {
-
-    private val secureRandom = SecureRandom()
 
     @Transactional
     override fun signup(request: SignupRequest, device: DeviceMetadata): AuthResponse {
@@ -93,8 +89,8 @@ class AuthenticationServiceImpl(
                 displayName = request.displayName.trim()
             )
         )
-        val deviceRecord = registerDevice(account.id, device)
-        val createdSession = createSession(account.id, deviceRecord.id)
+        rewardEventPublisher.signupCompleted(account.id)
+        val session = identitySessionService.create(account.id, device)
         val verification = when {
             email != null -> issueChallenge(
                 account,
@@ -114,8 +110,8 @@ class AuthenticationServiceImpl(
         }
 
         return AuthResponse(
-            account = accountResponse(account),
-            session = createdSession.response,
+            account = accountResponseAssembler.assemble(account),
+            session = session,
             nextVerification = verification
         )
     }
@@ -134,21 +130,21 @@ class AuthenticationServiceImpl(
         }.orElseThrow {
             InvalidCredentialsException()
         }
-        if (account.status == AccountStatus.SUSPENDED || !passwordEncoder.matches(
-                request.password,
-                account.passwordHash
-            )
+        val passwordHash = account.passwordHash
+        if (account.status == AccountStatus.SUSPENDED
+            || passwordHash == null
+            || !passwordEncoder.matches(request.password, passwordHash)
         ) {
             throw InvalidCredentialsException()
         }
-        val deviceRecord = registerDevice(account.id, device)
-        val createdSession = createSession(account.id, deviceRecord.id)
-        return AuthResponse(accountResponse(account), createdSession.response, null)
+        val session = identitySessionService.create(account.id, device)
+        return AuthResponse(accountResponseAssembler.assemble(account), session, null)
     }
 
     @Transactional
     override fun authenticate(accessToken: String): UUID {
-        val session = sessionRepository.findByTokenHash(hash(accessToken)).orElseThrow { InvalidCredentialsException() }
+        val session = sessionRepository.findByTokenHash(identitySessionService.hash(accessToken))
+            .orElseThrow { InvalidCredentialsException() }
         if (!session.isUsableAt(Instant.now())) {
             throw InvalidCredentialsException()
         }
@@ -162,11 +158,13 @@ class AuthenticationServiceImpl(
 
     @Transactional
     override fun logout(accountId: UUID, accessToken: String) {
-        val session = sessionRepository.findByTokenHash(hash(accessToken)).orElseThrow { InvalidCredentialsException() }
+        val session = sessionRepository.findByTokenHash(identitySessionService.hash(accessToken))
+            .orElseThrow { InvalidCredentialsException() }
         if (session.accountId != accountId || !session.isUsableAt(Instant.now())) {
             throw InvalidCredentialsException()
         }
         session.revoke()
+        session.deviceId?.let(pushTokenRevoker::disableDevice)
     }
 
     @Transactional
@@ -196,7 +194,7 @@ class AuthenticationServiceImpl(
         val email = account.email ?: throw IllegalArgumentException("Email is required to confirm email verification")
         verifyChallenge(account.id, VerificationPurpose.ACCOUNT_VERIFICATION, VerificationChannel.EMAIL, email, code)
         account.verifyEmail(Instant.now())
-        return accountResponse(account)
+        return accountResponseAssembler.assemble(account)
     }
 
     @Transactional
@@ -234,7 +232,7 @@ class AuthenticationServiceImpl(
             code
         )
         account.verifyPhone(normalizedPhoneNumber, Instant.now())
-        return accountResponse(account)
+        return accountResponseAssembler.assemble(account)
     }
 
     @Transactional
@@ -267,40 +265,11 @@ class AuthenticationServiceImpl(
 
         account.passwordHash = passwordEncoder.encode(request.newPassword)
         sessionRepository.findAllByAccountId(account.id).forEach { it.revoke() }
+        pushTokenRevoker.disableAccount(account.id)
     }
 
     private fun getAccount(accountId: UUID): Account = accountRepository.findById(accountId).orElseThrow {
         IdentityNotFoundException("Account was not found")
-    }
-
-    private fun registerDevice(accountId: UUID, device: DeviceMetadata): Device {
-        val identifier = device.deviceIdentifier.trim()
-        require(identifier.isNotEmpty()) { "X-Device-Id is required" }
-        return deviceRepository.findByAccountIdAndDeviceIdentifier(accountId, identifier)
-            .orElse(null)
-            ?.also { it.seen(device.platform, device.appVersion?.trim(), device.userAgent?.take(1024)) }
-            ?: deviceRepository.save(
-                Device(
-                    accountId = accountId,
-                    deviceIdentifier = identifier,
-                    platform = device.platform,
-                    appVersion = device.appVersion?.trim(),
-                    lastUserAgent = device.userAgent?.take(1024)
-                )
-            )
-    }
-
-    private fun createSession(accountId: UUID, deviceId: UUID): CreatedSession {
-        val rawToken = generateAccessToken()
-        val session = sessionRepository.save(
-            Session(
-                accountId = accountId,
-                deviceId = deviceId,
-                tokenHash = hash(rawToken),
-                expiresAt = Instant.now().plus(properties.sessionTtl)
-            )
-        )
-        return CreatedSession(SessionResponse(rawToken, "Bearer", session.expiresAt))
     }
 
     private fun issueChallenge(
@@ -318,7 +287,8 @@ class AuthenticationServiceImpl(
             )
             .forEach { it.invalidate() }
 
-        val code = "%06d".format(Locale.ROOT, secureRandom.nextInt(1_000_000))
+        // TODO: Replace this fixed development OTP with a securely generated code before production.
+        val code = "123456"
         val expiresAt = Instant.now().plus(
             if (channel == VerificationChannel.EMAIL) properties.emailVerificationTtl else properties.phoneVerificationTtl
         )
@@ -361,22 +331,6 @@ class AuthenticationServiceImpl(
             throw InvalidVerificationException("The verification code is invalid")
         }
         challenge.verify()
-    }
-
-    private fun accountResponse(account: Account) = AccountResponse(
-        id = account.id,
-        email = account.email,
-        phoneNumber = account.phoneNumber,
-        status = account.status,
-        emailVerified = account.emailVerifiedAt != null,
-        phoneVerified = account.phoneVerifiedAt != null,
-        profile = profileService.getByAccountId(account.id)
-    )
-
-    private fun generateAccessToken(): String {
-        val bytes = ByteArray(32)
-        secureRandom.nextBytes(bytes)
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
     private fun hashVerificationCode(code: String): String {
@@ -432,8 +386,6 @@ class AuthenticationServiceImpl(
 
         VerificationChannel.PHONE -> "***${destination.takeLast(4)}"
     }
-
-    private data class CreatedSession(val response: SessionResponse)
 
     private data class PasswordResetTarget(
         val accountId: UUID,

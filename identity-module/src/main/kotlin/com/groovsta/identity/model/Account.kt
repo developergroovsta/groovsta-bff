@@ -14,8 +14,8 @@ class Account(
     id: UUID = UUID.randomUUID(),
     @Column(unique = true, length = 320)
     var email: String? = null,
-    @Column(name = "password_hash", nullable = false, length = 100)
-    var passwordHash: String = "",
+    @Column(name = "password_hash", length = 100)
+    var passwordHash: String? = null,
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     var status: AccountStatus = AccountStatus.RESTRICTED,

@@ -26,12 +26,22 @@
         </dependency>
         <dependency>
             <groupId>com.groovsta</groupId>
+            <artifactId>notification-module</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.groovsta</groupId>
             <artifactId>content-module</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.groovsta</groupId>
             <artifactId>feed-module</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.groovsta</groupId>
+            <artifactId>messaging-module</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

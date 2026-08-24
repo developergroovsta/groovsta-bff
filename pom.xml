@@ -15,8 +15,10 @@
     <modules>
         <module>shared-kernel</module>
         <module>identity-module</module>
+        <module>notification-module</module>
         <module>content-module</module>
         <module>feed-module</module>
+        <module>messaging-module</module>
         <module>rewards-module</module>
         <module>trust-admin-module</module>
         <module>api-app</module>
@@ -27,12 +29,21 @@
         <kotlin.version>2.2.0</kotlin.version>
         <springdoc-openapi.version>2.6.0</springdoc-openapi.version>
         <spring-boot.version>3.3.2</spring-boot.version>
+        <aws.sdk.version>2.25.60</aws.sdk.version>
+        <firebase-admin.version>9.10.0</firebase-admin.version>
         <maven.compiler.release>${java.version}</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws.sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>

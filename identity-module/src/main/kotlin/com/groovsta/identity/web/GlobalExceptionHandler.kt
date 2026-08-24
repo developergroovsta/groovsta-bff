@@ -4,11 +4,15 @@ import com.groovsta.identity.dto.response.ApiError
 import com.groovsta.identity.exception.IdentityConflictException
 import com.groovsta.identity.exception.IdentityNotFoundException
 import com.groovsta.identity.exception.InvalidCredentialsException
+import com.groovsta.identity.exception.InvalidExternalIdentityException
+import com.groovsta.identity.exception.InvalidExternalRegistrationException
 import com.groovsta.identity.exception.InvalidVerificationException
 import jakarta.validation.ConstraintViolationException
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.MissingServletRequestParameterException
@@ -28,8 +32,29 @@ class GlobalExceptionHandler {
         exception.message ?: "Authentication failed"
     )
 
+    @ExceptionHandler(InvalidExternalIdentityException::class)
+    fun invalidExternalIdentity(exception: InvalidExternalIdentityException) = error(
+        HttpStatus.UNAUTHORIZED,
+        "INVALID_EXTERNAL_IDENTITY",
+        exception.message ?: "Google authentication failed"
+    )
+
+    @ExceptionHandler(InvalidExternalRegistrationException::class)
+    fun invalidExternalRegistration(exception: InvalidExternalRegistrationException) = error(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        "INVALID_EXTERNAL_REGISTRATION",
+        exception.message ?: "Google signup registration is invalid"
+    )
+
     @ExceptionHandler(IdentityNotFoundException::class)
     fun notFound(exception: IdentityNotFoundException) = error(
+        HttpStatus.NOT_FOUND,
+        "NOT_FOUND",
+        exception.message ?: "Resource was not found"
+    )
+
+    @ExceptionHandler(NoResourceFoundException::class)
+    fun noResourceFound(exception: NoResourceFoundException) = error(
         HttpStatus.NOT_FOUND,
         "NOT_FOUND",
         exception.message ?: "Resource was not found"
@@ -92,11 +117,19 @@ class GlobalExceptionHandler {
     )
 
     @ExceptionHandler(Exception::class)
-    fun unexpected(exception: Exception) = error(
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        "INTERNAL_SERVER_ERROR",
-        "An unexpected error occurred"
-    )
+    fun unexpected(exception: Exception): ResponseEntity<ApiError> {
+        logger.error(
+            "request.failed unexpected errorType={} message={}",
+            exception.javaClass.name,
+            exception.message,
+            exception
+        )
+        return error(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "INTERNAL_SERVER_ERROR",
+            "An unexpected error occurred"
+        )
+    }
 
     private fun error(
         status: HttpStatus,
@@ -104,4 +137,8 @@ class GlobalExceptionHandler {
         message: String,
         fields: Map<String, String> = emptyMap()
     ): ResponseEntity<ApiError> = ResponseEntity.status(status).body(ApiError(code, message, Instant.now(), fields))
+
+    private companion object {
+        private val logger = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
+    }
 }

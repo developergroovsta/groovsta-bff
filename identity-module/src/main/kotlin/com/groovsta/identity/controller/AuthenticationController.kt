@@ -59,14 +59,20 @@ class AuthenticationController(
         @RequestHeader(name = HttpHeaders.USER_AGENT, required = false) userAgent: String?
     ): AuthResponse = authenticationService.login(request, device(deviceId, platform, appVersion, userAgent))
 
-    @PostMapping("/password-resets")
-    @Operation(summary = "Request password reset OTP")
+    @PostMapping("/forgot-password")
+    @Operation(
+        summary = "Request a password-reset OTP",
+        description = "Provide exactly one verified contact: email or E.164 phone number."
+    )
     fun requestPasswordReset(
         @Valid @RequestBody request: RequestPasswordResetRequest
     ) = authenticationService.requestPasswordReset(request)
 
-    @PostMapping("/password-resets/confirm")
-    @Operation(summary = "Confirm password reset OTP and set a new password")
+    @PostMapping("/reset-password")
+    @Operation(
+        summary = "Reset a forgotten password",
+        description = "Provide the same email or phone number used to request the OTP, the six-digit OTP, and a new password."
+    )
     fun confirmPasswordReset(
         @Valid @RequestBody request: ConfirmPasswordResetRequest
     ): ResponseEntity<Void> {

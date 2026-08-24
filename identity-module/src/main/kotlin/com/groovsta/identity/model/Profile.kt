@@ -18,15 +18,17 @@ class Profile(
     var displayName: String = "",
     @Column(length = 500)
     var bio: String? = null,
-    @Column(name = "avatar_url", length = 2048)
-    var avatarUrl: String? = null,
+    @Column(name = "avatar_object_key", length = 1024)
+    var avatarObjectKey: String? = null,
+    @Column(name = "is_public", nullable = false)
+    var isPublic: Boolean = true,
     createdAt: Instant = Instant.EPOCH,
     updatedAt: Instant = Instant.EPOCH
 ) : AuditableModel(id, createdAt, updatedAt) {
 
-    fun update(displayName: String, bio: String?, avatarUrl: String?) {
+    fun update(displayName: String, bio: String?, isPublic: Boolean?) {
         this.displayName = displayName
         this.bio = bio
-        this.avatarUrl = avatarUrl
+        isPublic?.let { this.isPublic = it }
     }
 }

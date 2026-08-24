@@ -1,0 +1,4 @@
+interface:
+  display_name: "Groovsta Modular Backend"
+  short_description: "Auth, media, feeds, and trust conventions"
+  default_prompt: "Use $groovsta-identity-backend to implement or review a Groovsta modular backend change."

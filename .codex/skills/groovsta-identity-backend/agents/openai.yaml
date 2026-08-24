@@ -1,4 +1,0 @@
-interface:
-  display_name: "Groovsta Identity Backend"
-  short_description: "Identity backend conventions and readiness"
-  default_prompt: "Use $groovsta-identity-backend to implement or review a Groovsta identity-module backend change."

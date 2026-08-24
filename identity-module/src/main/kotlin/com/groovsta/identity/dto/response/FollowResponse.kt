@@ -4,5 +4,7 @@ import java.util.UUID
 
 data class FollowResponse(
     val accountId: UUID,
-    val following: Boolean
+    val relationship: ProfileRelationship,
+    val following: Boolean,
+    val followerCount: Long
 )

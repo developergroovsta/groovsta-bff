@@ -1,0 +1,44 @@
+Directory:
+/Users/rajatsingh/GroovstaVisualCode/groovsta-bff
+
+Prerequisites:
+1. Docker Desktop should be running.
+2. PostgreSQL must be running and reachable at the database URL in `.env`.
+3. Firebase service account file must exist at:
+   `/Users/rajatsingh/.config/groovsta/firebase-service-account.json`
+4. Root `.env` must exist at:
+   `/Users/rajatsingh/GroovstaVisualCode/groovsta-bff/.env`
+5. The root `.env` must include the TURN settings used by Coturn and the API:
+   - `TURN_EXTERNAL_IP`
+   - `TURN_USERNAME`
+   - `TURN_PASSWORD`
+   - `GROOVSTA_CALL_STUN_URLS`
+   - `GROOVSTA_CALL_TURN_URLS`
+   - `GROOVSTA_CALL_TURN_USERNAME`
+   - `GROOVSTA_CALL_TURN_CREDENTIAL`
+6. If you are starting from IntelliJ, make sure the run configuration working directory is the repo root or `api-app` so `.env` is discoverable.
+
+Commands:
+1. cd /Users/rajatsingh/GroovstaVisualCode/groovsta-bff
+2. ./scripts/run-api-local-firebase.sh
+
+What the script does:
+1. Starts Coturn with Docker using the root `.env`.
+2. Builds all modules with Maven.
+3. Starts the Spring Boot backend on port 8080.
+
+Manual equivalent:
+1. cd /Users/rajatsingh/GroovstaVisualCode/groovsta-bff
+2. docker compose --env-file .env -f turn-server/compose.yaml up -d
+3. mvn -pl api-app -am -DskipTests clean install
+4. mvn -pl api-app spring-boot:run
+5. Open Swagger at `http://localhost:8080/swagger-ui.html`
+6. For calls, fetch `GET /api/v1/calls/ice-configuration` before attempting WebRTC media.
+7. During a call, keep the WebSocket connected to `ws://localhost:8080/ws`
+
+Notes:
+1. Keep this terminal open while the backend is running.
+2. Frontend can use:
+   - REST: `http://localhost:8080`
+   - Health: `http://localhost:8080/actuator/health`
+3. If call UI is stuck on "connecting", verify the client is receiving `ice-configuration`, then check the WebSocket `call.signal` exchange, then check Coturn logs.
