@@ -1,0 +1,14 @@
+package com.groovsta.messaging.dto
+
+enum class CallEventType {
+    CALL_CREATED,
+    INCOMING_CALL,
+    PARTICIPANT_INVITED,
+    PARTICIPANT_JOINED,
+    PARTICIPANT_DECLINED,
+    PARTICIPANT_LEFT,
+    PARTICIPANT_MISSED,
+    PARTICIPANT_MEDIA_CHANGED,
+    CALL_ENDED,
+    SIGNAL
+}

@@ -1,0 +1,146 @@
+spring:
+  application:
+    name: groovsta-api
+  mail:
+    host: ${GROOVSTA_EMAIL_SMTP_HOST:smtp.gmail.com}
+    port: ${GROOVSTA_EMAIL_SMTP_PORT:587}
+    username: ${GROOVSTA_EMAIL_USERNAME:groovstadeveloper@gmail.com}
+    password: ${GROOVSTA_EMAIL_APP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  config:
+    import:
+      - optional:file:${user.dir}/.env[.properties]
+      - optional:file:${user.dir}/../.env[.properties]
+      - optional:file:${user.dir}/../../.env[.properties]
+      - optional:file:${user.dir}/groovsta-bff/.env[.properties]
+      - optional:file:${user.dir}/../groovsta-bff/.env[.properties]
+  datasource:
+    url: ${GROOVSTA_DATABASE_URL:jdbc:postgresql://localhost:5432/groovsta}
+    username: ${GROOVSTA_DATABASE_USERNAME:groovsta}
+    password: ${GROOVSTA_DATABASE_PASSWORD:groovsta}
+    driver-class-name: ${GROOVSTA_DATABASE_DRIVER:org.postgresql.Driver}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+  forward-headers-strategy: framework
+
+identity:
+  auth:
+    session-ttl: 30d
+    email-verification-ttl: 15m
+    phone-verification-ttl: 10m
+    max-verification-attempts: 5
+    verification-pepper: ${IDENTITY_VERIFICATION_PEPPER:development-only-change-me}
+    google:
+      enabled: ${GROOVSTA_GOOGLE_AUTH_ENABLED:false}
+      registration-ttl: ${GROOVSTA_GOOGLE_REGISTRATION_TTL:10m}
+
+groovsta:
+  email:
+    enabled: ${GROOVSTA_EMAIL_ENABLED:true}
+    from: ${GROOVSTA_EMAIL_FROM:groovstadeveloper@gmail.com}
+    reply-to: ${GROOVSTA_EMAIL_REPLY_TO:groovstadeveloper@gmail.com}
+  firebase:
+    enabled: ${GROOVSTA_FIREBASE_ENABLED:${GROOVSTA_PUSH_ENABLED:false}}
+    project-id: ${GROOVSTA_FIREBASE_PROJECT_ID:}
+    credentials-path: ${GROOVSTA_FIREBASE_CREDENTIALS_PATH:}
+    credentials-base64: ${GROOVSTA_FIREBASE_CREDENTIALS_BASE64:}
+  storage:
+    s3:
+      bucket: ${GROOVSTA_S3_BUCKET:groovsta-test-bucket}
+      region: ${AWS_REGION:ap-south-1}
+      endpoint: ${GROOVSTA_S3_ENDPOINT:}
+      path-style-access: ${GROOVSTA_S3_PATH_STYLE_ACCESS:false}
+      image-prefix: ${GROOVSTA_S3_IMAGE_PREFIX:images}
+      video-prefix: ${GROOVSTA_S3_VIDEO_PREFIX:videos}
+      upload-url-ttl: 15m
+      download-url-ttl: 1h
+  content:
+    max-reel-bytes: ${GROOVSTA_MAX_REEL_BYTES:524288000}
+    max-post-image-bytes: ${GROOVSTA_MAX_POST_IMAGE_BYTES:20971520}
+    max-story-image-bytes: ${GROOVSTA_MAX_STORY_IMAGE_BYTES:20971520}
+    max-story-video-bytes: ${GROOVSTA_MAX_STORY_VIDEO_BYTES:524288000}
+    transcode-callback-secret: ${GROOVSTA_TRANSCODE_CALLBACK_SECRET:development-transcode-secret}
+  locations:
+    provider-enabled: ${GROOVSTA_OLA_MAPS_ENABLED:false}
+    provider-base-url: ${GROOVSTA_OLA_MAPS_BASE_URL:https://api.olamaps.io}
+    provider-api-key: ${GROOVSTA_OLA_MAPS_API_KEY:}
+    provider-origin: ${GROOVSTA_OLA_MAPS_ORIGIN:}
+    language: ${GROOVSTA_LOCATION_LANGUAGE:en}
+    search-min-length: ${GROOVSTA_LOCATION_SEARCH_MIN_LENGTH:3}
+    search-cache-ttl: ${GROOVSTA_LOCATION_SEARCH_CACHE_TTL:7d}
+    reverse-cache-ttl: ${GROOVSTA_LOCATION_REVERSE_CACHE_TTL:30d}
+    search-radius-meters: ${GROOVSTA_LOCATION_SEARCH_RADIUS_METERS:50000}
+    search-limit: ${GROOVSTA_LOCATION_SEARCH_LIMIT:20}
+    provider-rate-limit-per-minute: ${GROOVSTA_LOCATION_PROVIDER_RATE_LIMIT_PER_MINUTE:30}
+  rewards:
+    signup-coins: ${GROOVSTA_REWARDS_SIGNUP_COINS:5}
+    reel-scroll-unit: ${GROOVSTA_REWARDS_REEL_SCROLL_UNIT:100}
+    reel-scroll-coins: ${GROOVSTA_REWARDS_REEL_SCROLL_COINS:1}
+    reel-upload-unit: ${GROOVSTA_REWARDS_REEL_UPLOAD_UNIT:5}
+    reel-upload-coins: ${GROOVSTA_REWARDS_REEL_UPLOAD_COINS:1}
+    reel-upload-claim-buffer: ${GROOVSTA_REWARDS_REEL_UPLOAD_CLAIM_BUFFER:7d}
+    like-claim-buffer: ${GROOVSTA_REWARDS_LIKE_CLAIM_BUFFER:7d}
+    follower-claim-buffer: ${GROOVSTA_REWARDS_FOLLOWER_CLAIM_BUFFER:7d}
+  trust:
+    moderation-admin-key: ${GROOVSTA_MODERATION_ADMIN_KEY:development-moderation-key}
+  calls:
+    max-participants: ${GROOVSTA_CALL_MAX_PARTICIPANTS:8}
+    ring-timeout: ${GROOVSTA_CALL_RING_TIMEOUT:30s}
+    heartbeat-timeout: ${GROOVSTA_CALL_HEARTBEAT_TIMEOUT:90s}
+    cleanup-interval: ${GROOVSTA_CALL_CLEANUP_INTERVAL:10000}
+    stun-urls: ${GROOVSTA_CALL_STUN_URLS:stun:stun.l.google.com:19302}
+    turn-urls: ${GROOVSTA_CALL_TURN_URLS:turn:192.168.0.161:3478?transport=udp,turn:192.168.0.161:3478?transport=tcp}
+    turn-username: ${GROOVSTA_CALL_TURN_USERNAME:groovsta}
+    turn-credential: ${GROOVSTA_CALL_TURN_CREDENTIAL:replace-with-a-local-development-secret}
+  chat:
+    media:
+      max-attachments-per-message: ${GROOVSTA_CHAT_MAX_ATTACHMENTS:10}
+      max-image-bytes: ${GROOVSTA_CHAT_MAX_IMAGE_BYTES:20971520}
+      max-video-bytes: ${GROOVSTA_CHAT_MAX_VIDEO_BYTES:524288000}
+      max-batch-bytes: ${GROOVSTA_CHAT_MAX_BATCH_BYTES:524288000}
+      max-dimension-pixels: ${GROOVSTA_CHAT_MAX_DIMENSION_PIXELS:12000}
+      max-video-duration: ${GROOVSTA_CHAT_MAX_VIDEO_DURATION:15m}
+      abandoned-upload-retention: ${GROOVSTA_CHAT_ABANDONED_UPLOAD_RETENTION:24h}
+      cleanup-interval: ${GROOVSTA_CHAT_UPLOAD_CLEANUP_INTERVAL:3600000}
+  push:
+    enabled: ${GROOVSTA_PUSH_ENABLED:false}
+    poll-interval: ${GROOVSTA_PUSH_POLL_INTERVAL:2000}
+    batch-size: ${GROOVSTA_PUSH_BATCH_SIZE:100}
+    lease-duration: ${GROOVSTA_PUSH_LEASE_DURATION:30s}
+    max-attempts: ${GROOVSTA_PUSH_MAX_ATTEMPTS:6}
+    initial-retry-delay: ${GROOVSTA_PUSH_INITIAL_RETRY_DELAY:5s}
+    max-retry-delay: ${GROOVSTA_PUSH_MAX_RETRY_DELAY:10m}
+    notification-ttl: ${GROOVSTA_PUSH_NOTIFICATION_TTL:7d}
+    include-sensitive-previews: ${GROOVSTA_PUSH_INCLUDE_SENSITIVE_PREVIEWS:false}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    try-it-out-enabled: true
+    persist-authorization: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

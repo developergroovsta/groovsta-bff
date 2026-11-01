@@ -1,0 +1,17 @@
+package com.groovsta.shared.notification;
+
+public enum NotificationType {
+    FOLLOW_REQUEST,
+    NEW_FOLLOWER,
+    FOLLOW_REQUEST_ACCEPTED,
+    CONTENT_LIKED,
+    CONTENT_TAGGED,
+    STORY_LIKED,
+    CONTENT_COMMENTED,
+    STORY_COMMENTED,
+    COMMENT_LIKED,
+    COMMENT_MENTIONED,
+    DIRECT_MESSAGE,
+    MISSED_CALL,
+    REWARD_MILESTONE_ACHIEVED
+}

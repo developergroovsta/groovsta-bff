@@ -1,0 +1,7 @@
+ALTER TABLE content_items
+    ADD COLUMN hide_like_count BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN hide_share_count BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE content_stories
+    ADD COLUMN hide_like_count BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN hide_share_count BOOLEAN NOT NULL DEFAULT FALSE;
