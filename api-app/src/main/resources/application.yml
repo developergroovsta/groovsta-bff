@@ -1,6 +1,17 @@
 spring:
   application:
     name: groovsta-api
+  mail:
+    host: ${GROOVSTA_EMAIL_SMTP_HOST:smtp.gmail.com}
+    port: ${GROOVSTA_EMAIL_SMTP_PORT:587}
+    username: ${GROOVSTA_EMAIL_USERNAME:groovstadeveloper@gmail.com}
+    password: ${GROOVSTA_EMAIL_APP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
   config:
     import:
       - optional:file:${user.dir}/.env[.properties]
@@ -26,6 +37,7 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  forward-headers-strategy: framework
 
 identity:
   auth:
@@ -39,6 +51,10 @@ identity:
       registration-ttl: ${GROOVSTA_GOOGLE_REGISTRATION_TTL:10m}
 
 groovsta:
+  email:
+    enabled: ${GROOVSTA_EMAIL_ENABLED:true}
+    from: ${GROOVSTA_EMAIL_FROM:groovstadeveloper@gmail.com}
+    reply-to: ${GROOVSTA_EMAIL_REPLY_TO:groovstadeveloper@gmail.com}
   firebase:
     enabled: ${GROOVSTA_FIREBASE_ENABLED:${GROOVSTA_PUSH_ENABLED:false}}
     project-id: ${GROOVSTA_FIREBASE_PROJECT_ID:}
@@ -60,6 +76,18 @@ groovsta:
     max-story-image-bytes: ${GROOVSTA_MAX_STORY_IMAGE_BYTES:20971520}
     max-story-video-bytes: ${GROOVSTA_MAX_STORY_VIDEO_BYTES:524288000}
     transcode-callback-secret: ${GROOVSTA_TRANSCODE_CALLBACK_SECRET:development-transcode-secret}
+  locations:
+    provider-enabled: ${GROOVSTA_OLA_MAPS_ENABLED:false}
+    provider-base-url: ${GROOVSTA_OLA_MAPS_BASE_URL:https://api.olamaps.io}
+    provider-api-key: ${GROOVSTA_OLA_MAPS_API_KEY:}
+    provider-origin: ${GROOVSTA_OLA_MAPS_ORIGIN:}
+    language: ${GROOVSTA_LOCATION_LANGUAGE:en}
+    search-min-length: ${GROOVSTA_LOCATION_SEARCH_MIN_LENGTH:3}
+    search-cache-ttl: ${GROOVSTA_LOCATION_SEARCH_CACHE_TTL:7d}
+    reverse-cache-ttl: ${GROOVSTA_LOCATION_REVERSE_CACHE_TTL:30d}
+    search-radius-meters: ${GROOVSTA_LOCATION_SEARCH_RADIUS_METERS:50000}
+    search-limit: ${GROOVSTA_LOCATION_SEARCH_LIMIT:20}
+    provider-rate-limit-per-minute: ${GROOVSTA_LOCATION_PROVIDER_RATE_LIMIT_PER_MINUTE:30}
   rewards:
     signup-coins: ${GROOVSTA_REWARDS_SIGNUP_COINS:5}
     reel-scroll-unit: ${GROOVSTA_REWARDS_REEL_SCROLL_UNIT:100}

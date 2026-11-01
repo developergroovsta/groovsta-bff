@@ -16,7 +16,9 @@ data class CommentResponse(
     val text: String,
     val mentions: List<CommentMentionResponse>,
     val replyCount: Long,
+    val replyCountDisplay: String,
     val likeCount: Long,
+    val likeCountDisplay: String,
     val createdAt: Instant,
     val isDeleted: Boolean,
     val viewerState: CommentViewerStateResponse

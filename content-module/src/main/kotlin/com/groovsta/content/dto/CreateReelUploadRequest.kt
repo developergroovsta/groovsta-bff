@@ -13,5 +13,10 @@ data class CreateReelUploadRequest(
     @Positive @Max(5368709120) val sizeBytes: Long,
     @Size(max = 2200) val caption: String?,
     @Size(max = 20)
-    val taggedAccountIds: List<UUID> = emptyList()
+    val taggedAccountIds: List<UUID> = emptyList(),
+    val locationId: UUID? = null,
+    val commentsEnabled: Boolean = true,
+    val hideComments: Boolean = false,
+    val hideLikeCount: Boolean = false,
+    val hideShareCount: Boolean = false
 )

@@ -18,6 +18,7 @@ interface StoryService {
     fun get(viewerAccountId: UUID?, storyId: UUID): StoryResponse
     fun visible(viewerAccountId: UUID?, cursor: String?, limit: Int): StoryPageResponse
     fun visibleByHandle(viewerAccountId: UUID?, handle: String, cursor: String?, limit: Int): StoryPageResponse
+    fun visibleByLocation(viewerAccountId: UUID?, locationId: UUID, cursor: String?, limit: Int): StoryPageResponse
     fun archive(ownerAccountId: UUID, cursor: String?, limit: Int): StoryPageResponse
     fun createHighlight(ownerAccountId: UUID, request: UpsertStoryHighlightRequest): StoryHighlightResponse
     fun updateHighlight(

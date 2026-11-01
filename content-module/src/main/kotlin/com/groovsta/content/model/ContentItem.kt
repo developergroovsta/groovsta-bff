@@ -29,6 +29,14 @@ abstract class ContentItem(
     open var moderationReason: String? = null,
     @Column(name = "published_at")
     open var publishedAt: Instant? = null,
+    @Column(name = "location_id")
+    open var locationId: UUID? = null,
+    @Column(name = "comments_enabled", nullable = false)
+    open var commentsEnabled: Boolean = true,
+    @Column(name = "hide_like_count", nullable = false)
+    open var hideLikeCount: Boolean = false,
+    @Column(name = "hide_share_count", nullable = false)
+    open var hideShareCount: Boolean = false,
     createdAt: Instant = Instant.now(),
     updatedAt: Instant = Instant.now()
 ) : ContentModel(id, createdAt, updatedAt)

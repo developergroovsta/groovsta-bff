@@ -205,6 +205,104 @@ interface StoryRepository : JpaRepository<Story, UUID> {
         left join StoryView storyView
           on storyView.storyId = story.id
          and storyView.viewerAccountId = :viewerAccountId
+        where story.locationId = :locationId
+          and owner.status = :activeStatus
+          and story.status = :publishedStatus
+          and story.expiresAt > :now
+          and story.ownerAccountId not in :mutedOwnerAccountIds
+          and (
+              ownerProfile.isPublic = true
+              or story.ownerAccountId = :viewerAccountId
+              or (
+                  :viewerAccountId is not null
+                  and exists (
+                      select privacyConnection.id
+                      from Follow privacyConnection, Account privacyViewer
+                      where privacyConnection.followerAccountId = :viewerAccountId
+                        and privacyConnection.followedAccountId = story.ownerAccountId
+                        and privacyViewer.id = privacyConnection.followerAccountId
+                        and privacyViewer.status = :activeStatus
+                  )
+              )
+          )
+          and (
+              story.ownerAccountId = :viewerAccountId
+              or story.visibility = :everyone
+              or (
+                  :viewerAccountId is not null
+                  and story.visibility = :followers
+                  and exists (
+                      select connection.id
+                      from Follow connection, Account viewer
+                      where connection.followerAccountId = :viewerAccountId
+                        and connection.followedAccountId = story.ownerAccountId
+                        and viewer.id = connection.followerAccountId
+                        and viewer.status = :activeStatus
+                  )
+              )
+              or (
+                  :viewerAccountId is not null
+                  and story.visibility = :closeFriends
+                  and exists (
+                      select membership.id
+                      from CloseFriend membership, Account viewer
+                      where membership.ownerAccountId = story.ownerAccountId
+                        and membership.friendAccountId = :viewerAccountId
+                        and viewer.id = membership.friendAccountId
+                        and viewer.status = :activeStatus
+                  )
+              )
+          )
+          and (
+              (case
+                  when story.ownerAccountId = :viewerAccountId or storyView.id is not null then 1
+                  else 0
+              end) > :cursorSeenTier
+              or (
+                  (case
+                      when story.ownerAccountId = :viewerAccountId or storyView.id is not null then 1
+                      else 0
+                  end) = :cursorSeenTier
+                  and (
+                      story.publishedAt < :before
+                      or (story.publishedAt = :before and story.id < :cursorId)
+                  )
+              )
+          )
+        order by
+            case
+                when story.ownerAccountId = :viewerAccountId or storyView.id is not null then 1
+                else 0
+            end asc,
+            story.publishedAt desc,
+            story.id desc
+        """
+    )
+    fun findVisibleStoriesByLocation(
+        @Param("viewerAccountId") viewerAccountId: UUID?,
+        @Param("locationId") locationId: UUID,
+        @Param("publishedStatus") publishedStatus: StoryStatus,
+        @Param("everyone") everyone: StoryVisibility,
+        @Param("followers") followers: StoryVisibility,
+        @Param("closeFriends") closeFriends: StoryVisibility,
+        @Param("activeStatus") activeStatus: AccountStatus,
+        @Param("now") now: Instant,
+        @Param("mutedOwnerAccountIds") mutedOwnerAccountIds: Collection<UUID>,
+        @Param("cursorSeenTier") cursorSeenTier: Int,
+        @Param("before") before: Instant,
+        @Param("cursorId") cursorId: UUID,
+        pageable: Pageable
+    ): List<Story>
+
+    @Query(
+        """
+        select story
+        from Story story
+        join Account owner on owner.id = story.ownerAccountId
+        join Profile ownerProfile on ownerProfile.accountId = story.ownerAccountId
+        left join StoryView storyView
+          on storyView.storyId = story.id
+         and storyView.viewerAccountId = :viewerAccountId
         where owner.status = :activeStatus
           and story.ownerAccountId = :ownerAccountId
           and story.status = :publishedStatus

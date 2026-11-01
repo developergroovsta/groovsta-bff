@@ -7,18 +7,22 @@ import com.groovsta.content.dto.PostMediaResponse
 import com.groovsta.content.dto.PostMediaUploadResponse
 import com.groovsta.content.dto.PostResponse
 import com.groovsta.content.dto.PostUploadResponse
+import com.groovsta.content.dto.toDisplayCount
 import com.groovsta.content.model.ContentItemTag
 import com.groovsta.content.model.Post
 import com.groovsta.content.model.PostMedia
 import com.groovsta.content.model.ContentStatus
 import com.groovsta.content.repository.ContentItemTagRepository
+import com.groovsta.content.repository.ContentLocationRepository
 import com.groovsta.content.repository.PostMediaRepository
 import com.groovsta.content.repository.PostRepository
 import com.groovsta.content.repository.ContentLikeRepository
 import com.groovsta.content.repository.ContentCommentRepository
 import com.groovsta.content.repository.SavedContentRepository
+import com.groovsta.content.service.ContentShareService
 import com.groovsta.content.service.PostService
 import com.groovsta.content.service.PublishedPostQueryService
+import com.groovsta.content.dto.toSummaryResponse
 import com.groovsta.identity.dto.response.ProfileSummaryResponse
 import com.groovsta.identity.repository.ProfileRepository
 import com.groovsta.identity.service.ProfileService
@@ -41,9 +45,11 @@ class PostServiceImpl(
     private val postRepository: PostRepository,
     private val mediaRepository: PostMediaRepository,
     private val tagRepository: ContentItemTagRepository,
+    private val locationRepository: ContentLocationRepository,
     private val likeRepository: ContentLikeRepository,
     private val commentRepository: ContentCommentRepository,
     private val savedContentRepository: SavedContentRepository,
+    private val contentShareService: ContentShareService,
     private val profileRepository: ProfileRepository,
     private val profileService: ProfileService,
     private val notificationPublisher: NotificationPublisher,
@@ -60,10 +66,15 @@ class PostServiceImpl(
             }
         }
         val taggedProfiles = validateTaggedAccounts(request.taggedAccountIds)
+        validateLocation(request.locationId)
 
         val post = postRepository.save(Post(
             ownerAccountId = accountId,
-            caption = request.caption?.trim()?.takeIf(String::isNotEmpty)
+            caption = request.caption?.trim()?.takeIf(String::isNotEmpty),
+            locationId = request.locationId,
+            commentsEnabled = commentsEnabled(request.commentsEnabled, request.hideComments),
+            hideLikeCount = request.hideLikeCount,
+            hideShareCount = request.hideShareCount
         ))
         saveTags(post.id, request.taggedAccountIds, taggedProfiles)
         val media = request.media.mapIndexed { position, item ->
@@ -206,28 +217,42 @@ class PostServiceImpl(
         liked: Boolean,
         taggedAccounts: List<ProfileSummaryResponse> = taggedAccounts(post.id),
         canShareToStory: Boolean = canShareToStory(null, post.ownerAccountId)
-    ) = PostResponse(
-        id = post.id,
-        ownerAccountId = post.ownerAccountId,
-        caption = post.caption,
-        status = post.status,
-        media = media.map {
-            PostMediaResponse(
-                id = it.id,
-                position = it.position,
-                contentType = it.contentType,
-                imageUrl = storage.createDownloadUrl(it.objectKey, storageProperties.downloadUrlTtl)
-            )
-        },
-        taggedAccounts = taggedAccounts,
-        canShareToStory = canShareToStory,
-        likeCount = likeRepository.countByContentId(post.id),
-        liked = liked,
-        commentCount = commentRepository.countByContentId(post.id),
-        publishedAt = post.publishedAt,
-        createdAt = post.createdAt,
-        saved = saved
-    )
+    ): PostResponse {
+        val likeCount = likeRepository.countByContentId(post.id)
+        val commentCount = commentRepository.countByContentId(post.id)
+        val shareCount = contentShareService.countContentShares(post.id)
+        return PostResponse(
+            id = post.id,
+            ownerAccountId = post.ownerAccountId,
+            caption = post.caption,
+            status = post.status,
+            media = media.map {
+                PostMediaResponse(
+                    id = it.id,
+                    position = it.position,
+                    contentType = it.contentType,
+                    imageUrl = storage.createDownloadUrl(it.objectKey, storageProperties.downloadUrlTtl)
+                )
+            },
+            taggedAccounts = taggedAccounts,
+            location = location(post.locationId),
+            canShareToStory = canShareToStory,
+            commentsEnabled = post.commentsEnabled,
+            hideComments = !post.commentsEnabled,
+            hideLikeCount = post.hideLikeCount,
+            hideShareCount = post.hideShareCount,
+            likeCount = likeCount,
+            likeCountDisplay = likeCount.toDisplayCount(),
+            liked = liked,
+            commentCount = commentCount,
+            commentCountDisplay = commentCount.toDisplayCount(),
+            shareCount = shareCount,
+            shareCountDisplay = shareCount.toDisplayCount(),
+            publishedAt = post.publishedAt,
+            createdAt = post.createdAt,
+            saved = saved
+        )
+    }
 
     private fun responses(posts: List<Post>, viewerAccountId: UUID?): List<PostResponse> {
         val savedIds = savedContentIds(viewerAccountId, posts.map(Post::id))
@@ -254,6 +279,9 @@ class PostServiceImpl(
         ownerAccountId: UUID,
         publicOwnerIds: Set<UUID>
     ): Boolean = viewerAccountId != null && (viewerAccountId == ownerAccountId || ownerAccountId in publicOwnerIds)
+
+    private fun commentsEnabled(commentsEnabled: Boolean, hideComments: Boolean): Boolean =
+        commentsEnabled && !hideComments
 
     private fun publicOwnerIds(ownerAccountIds: Set<UUID>): Set<UUID> =
         if (ownerAccountIds.isEmpty()) emptySet()
@@ -331,6 +359,15 @@ class PostServiceImpl(
         if (accountId == null || contentIds.isEmpty()) emptySet()
         else savedContentRepository.findByAccountIdAndContentIdIn(accountId, contentIds)
             .mapTo(mutableSetOf()) { it.contentId }
+
+    private fun validateLocation(locationId: UUID?) {
+        require(locationId == null || locationRepository.existsById(locationId)) {
+            "Location was not found"
+        }
+    }
+
+    private fun location(locationId: UUID?) =
+        locationId?.let { locationRepository.findById(it).orElse(null)?.toSummaryResponse() }
 
     private val postPrefix: String
         get() = "${storageProperties.imagePrefix.trim('/')}/posts"

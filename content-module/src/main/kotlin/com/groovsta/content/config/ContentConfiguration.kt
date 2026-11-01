@@ -8,5 +8,5 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories
 @Configuration
 @EntityScan(basePackages = ["com.groovsta.content.model"])
 @EnableJpaRepositories(basePackages = ["com.groovsta.content.repository"])
-@EnableConfigurationProperties(ContentProperties::class)
+@EnableConfigurationProperties(ContentProperties::class, LocationProperties::class)
 class ContentConfiguration

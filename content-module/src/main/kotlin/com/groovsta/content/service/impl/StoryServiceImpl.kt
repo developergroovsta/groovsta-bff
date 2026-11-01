@@ -15,8 +15,11 @@ import com.groovsta.content.dto.StoryResponse
 import com.groovsta.content.dto.StorySeenResponse
 import com.groovsta.content.dto.StoryUploadResponse
 import com.groovsta.content.dto.StoryViewerStateResponse
+import com.groovsta.content.dto.toDisplayCount
 import com.groovsta.content.dto.UpsertStoryHighlightRequest
+import com.groovsta.content.dto.toSummaryResponse
 import com.groovsta.content.model.ContentItem
+import com.groovsta.content.model.ContentShareChannel
 import com.groovsta.content.model.ContentKind
 import com.groovsta.content.model.ContentStatus
 import com.groovsta.content.model.Post
@@ -32,6 +35,7 @@ import com.groovsta.content.model.StoryVisibility
 import com.groovsta.content.model.StoryView
 import com.groovsta.content.model.TranscodeJob
 import com.groovsta.content.repository.ContentItemRepository
+import com.groovsta.content.repository.ContentLocationRepository
 import com.groovsta.content.repository.ContentCommentRepository
 import com.groovsta.content.repository.ContentLikeRepository
 import com.groovsta.content.repository.PostMediaRepository
@@ -41,6 +45,7 @@ import com.groovsta.content.repository.StoryHighlightRepository
 import com.groovsta.content.repository.StoryRepository
 import com.groovsta.content.repository.StoryViewRepository
 import com.groovsta.content.repository.TranscodeJobRepository
+import com.groovsta.content.service.ContentShareService
 import com.groovsta.content.service.StoryService
 import com.groovsta.identity.dto.response.ProfileSummaryResponse
 import com.groovsta.identity.dto.response.ProfileSummaryPageResponse
@@ -76,6 +81,7 @@ class StoryServiceImpl(
     private val contentLikeRepository: ContentLikeRepository,
     private val contentCommentRepository: ContentCommentRepository,
     private val contentRepository: ContentItemRepository,
+    private val locationRepository: ContentLocationRepository,
     private val postMediaRepository: PostMediaRepository,
     private val transcodeJobRepository: TranscodeJobRepository,
     private val accountRepository: AccountRepository,
@@ -84,6 +90,7 @@ class StoryServiceImpl(
     private val profileService: ProfileService,
     private val contentMuteService: ContentMuteService,
     private val socialGraphService: SocialGraphService,
+    private val contentShareService: ContentShareService,
     private val storage: ObjectStorageService,
     private val storageProperties: S3StorageProperties,
     private val properties: ContentProperties
@@ -101,6 +108,7 @@ class StoryServiceImpl(
         require(request.taggedAccountIds.distinct().size == request.taggedAccountIds.size) {
             "A tagged account may appear only once"
         }
+        validateLocation(request.locationId)
 
         val linkedContent = request.linkedContentId?.let { shareablePublishedContent(accountId, it) }
         val linkedStory = request.linkedStoryId?.let { shareableStorySource(accountId, it) }
@@ -112,6 +120,12 @@ class StoryServiceImpl(
         }
 
         storyRepository.save(story)
+        linkedContent?.let {
+            contentShareService.recordContentShare(accountId, it.id, ContentShareChannel.STORY)
+        }
+        linkedStory?.let {
+            contentShareService.recordStoryShare(accountId, it.id, ContentShareChannel.STORY)
+        }
         val taggedProfiles = profileService.mentionableSummaries(request.taggedAccountIds.toSet())
         require(taggedProfiles.size == request.taggedAccountIds.size) {
             "Every tagged account must exist and be active"
@@ -214,6 +228,35 @@ class StoryServiceImpl(
                 closeFriends = StoryVisibility.CLOSE_FRIENDS,
                 activeStatus = AccountStatus.ACTIVE,
                 now = Instant.now(),
+                cursorSeenTier = decoded.seenTier,
+                before = decoded.before,
+                cursorId = decoded.id,
+                pageable = pageable
+            )
+        }
+    }
+
+    @Transactional(readOnly = true)
+    override fun visibleByLocation(
+        viewerAccountId: UUID?,
+        locationId: UUID,
+        cursor: String?,
+        limit: Int
+    ): StoryPageResponse {
+        if (!locationRepository.existsById(locationId)) notFound()
+        return visiblePage(viewerAccountId, cursor, limit) { decoded, pageable ->
+            storyRepository.findVisibleStoriesByLocation(
+                viewerAccountId = viewerAccountId,
+                locationId = locationId,
+                publishedStatus = StoryStatus.PUBLISHED,
+                everyone = StoryVisibility.EVERYONE,
+                followers = StoryVisibility.FOLLOWERS,
+                closeFriends = StoryVisibility.CLOSE_FRIENDS,
+                activeStatus = AccountStatus.ACTIVE,
+                now = Instant.now(),
+                mutedOwnerAccountIds = contentMuteService
+                    .mutedAccountIds(viewerAccountId, ContentMuteType.STORY)
+                    .ifEmpty { setOf(NO_ACCOUNT) },
                 cursorSeenTier = decoded.seenTier,
                 before = decoded.before,
                 cursorId = decoded.id,
@@ -572,7 +615,11 @@ class StoryServiceImpl(
             contentType = media.contentType,
             sourceSizeBytes = media.sizeBytes,
             linkedContentId = request.linkedContentId,
-            ownsMedia = true
+            locationId = request.locationId,
+            ownsMedia = true,
+            commentsEnabled = commentsEnabled(request.commentsEnabled, request.hideComments),
+            hideLikeCount = request.hideLikeCount,
+            hideShareCount = request.hideShareCount
         )
     }
 
@@ -621,7 +668,11 @@ class StoryServiceImpl(
             sourceSizeBytes = media.sizeBytes,
             durationSeconds = media.durationSeconds,
             linkedContentId = content.id,
+            locationId = request.locationId,
             ownsMedia = false,
+            commentsEnabled = commentsEnabled(request.commentsEnabled, request.hideComments),
+            hideLikeCount = request.hideLikeCount,
+            hideShareCount = request.hideShareCount,
             publishedAt = now,
             expiresAt = now.plus(STORY_LIFETIME)
         )
@@ -648,7 +699,11 @@ class StoryServiceImpl(
             sourceSizeBytes = source.sourceSizeBytes,
             durationSeconds = source.durationSeconds,
             linkedStoryId = source.id,
+            locationId = request.locationId,
             ownsMedia = false,
+            commentsEnabled = commentsEnabled(request.commentsEnabled, request.hideComments),
+            hideLikeCount = request.hideLikeCount,
+            hideShareCount = request.hideShareCount,
             publishedAt = now,
             expiresAt = now.plus(STORY_LIFETIME)
         )
@@ -695,6 +750,7 @@ class StoryServiceImpl(
             .associate { it.storyId to it.likeCount }
         val commentCounts = contentCommentRepository.countByStoryIds(storyIds)
             .associate { it.storyId to it.commentCount }
+        val shareCounts = contentShareService.countStoryShares(storyIds)
         val likedStoryIds = if (viewerAccountId == null) emptySet() else
             contentLikeRepository.findLikedStoryIds(viewerAccountId, storyIds)
 
@@ -712,6 +768,7 @@ class StoryServiceImpl(
                 hasSeen = story.ownerAccountId == viewerAccountId || story.id in seenStoryIds,
                 likeCount = likeCounts[story.id] ?: 0,
                 commentCount = commentCounts[story.id] ?: 0,
+                shareCount = shareCounts[story.id] ?: 0,
                 viewerLiked = story.id in likedStoryIds,
                 fullDownloadTtl = fullDownloadTtl
             )
@@ -730,6 +787,7 @@ class StoryServiceImpl(
         hasSeen: Boolean = hasSeen(story, viewerAccountId),
         likeCount: Long = contentLikeRepository.countByStoryId(story.id),
         commentCount: Long = contentCommentRepository.countByStoryId(story.id),
+        shareCount: Long = contentShareService.countStoryShares(story.id),
         viewerLiked: Boolean = viewerAccountId != null &&
             contentLikeRepository.existsByStoryIdAndAccountId(story.id, viewerAccountId),
         fullDownloadTtl: Boolean = false
@@ -769,11 +827,20 @@ class StoryServiceImpl(
             durationSeconds = story.durationSeconds,
             failureReason = story.failureReason,
             moderationReason = story.moderationReason,
+            commentsEnabled = story.commentsEnabled,
+            hideComments = !story.commentsEnabled,
+            hideLikeCount = story.hideLikeCount,
+            hideShareCount = story.hideShareCount,
             likeCount = likeCount,
+            likeCountDisplay = likeCount.toDisplayCount(),
             liked = viewerLiked,
             commentCount = commentCount,
+            commentCountDisplay = commentCount.toDisplayCount(),
+            shareCount = shareCount,
+            shareCountDisplay = shareCount.toDisplayCount(),
             linkedContent = linked,
             taggedAccounts = taggedAccounts,
+            location = location(story.locationId),
             publishedAt = story.publishedAt,
             expiresAt = story.expiresAt,
             expired = story.expiresAt?.let { !it.isAfter(Instant.now()) } ?: false,
@@ -789,6 +856,18 @@ class StoryServiceImpl(
         story.ownerAccountId == viewerAccountId -> true
         else -> storyViewRepository.findByStoryIdAndViewerAccountId(story.id, viewerAccountId) != null
     }
+
+    private fun commentsEnabled(commentsEnabled: Boolean, hideComments: Boolean): Boolean =
+        commentsEnabled && !hideComments
+
+    private fun validateLocation(locationId: UUID?) {
+        require(locationId == null || locationRepository.existsById(locationId)) {
+            "Location was not found"
+        }
+    }
+
+    private fun location(locationId: UUID?) =
+        locationId?.let { locationRepository.findById(it).orElse(null)?.toSummaryResponse() }
 
     private fun seenStoryIds(stories: List<Story>, viewerAccountId: UUID?): Set<UUID> {
         if (viewerAccountId == null || stories.isEmpty()) return emptySet()

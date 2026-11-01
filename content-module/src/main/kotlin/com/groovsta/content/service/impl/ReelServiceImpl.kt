@@ -5,16 +5,20 @@ import com.groovsta.content.dto.CompleteReelUploadRequest
 import com.groovsta.content.dto.CreateReelUploadRequest
 import com.groovsta.content.dto.ReelResponse
 import com.groovsta.content.dto.ReelUploadResponse
+import com.groovsta.content.dto.toDisplayCount
+import com.groovsta.content.dto.toSummaryResponse
 import com.groovsta.content.model.ContentItemTag
 import com.groovsta.content.model.Reel
 import com.groovsta.content.model.ContentStatus
 import com.groovsta.content.model.TranscodeJob
 import com.groovsta.content.repository.ContentCommentRepository
 import com.groovsta.content.repository.ContentItemTagRepository
+import com.groovsta.content.repository.ContentLocationRepository
 import com.groovsta.content.repository.ContentLikeRepository
 import com.groovsta.content.repository.ReelRepository
 import com.groovsta.content.repository.SavedContentRepository
 import com.groovsta.content.repository.TranscodeJobRepository
+import com.groovsta.content.service.ContentShareService
 import com.groovsta.content.service.PublishedReelQueryService
 import com.groovsta.content.service.ReelService
 import com.groovsta.identity.dto.response.ProfileSummaryResponse
@@ -42,7 +46,9 @@ class ReelServiceImpl(
     private val likeRepository: ContentLikeRepository,
     private val commentRepository: ContentCommentRepository,
     private val tagRepository: ContentItemTagRepository,
+    private val locationRepository: ContentLocationRepository,
     private val savedContentRepository: SavedContentRepository,
+    private val contentShareService: ContentShareService,
     private val profileRepository: ProfileRepository,
     private val profileService: ProfileService,
     private val notificationPublisher: NotificationPublisher,
@@ -56,6 +62,7 @@ class ReelServiceImpl(
     override fun createUpload(accountId: UUID, request: CreateReelUploadRequest): ReelUploadResponse {
         require(request.sizeBytes <= properties.maxReelBytes) { "Reel exceeds the configured upload limit" }
         val taggedProfiles = validateTaggedAccounts(request.taggedAccountIds)
+        validateLocation(request.locationId)
         val reelId = UUID.randomUUID()
         val extension = request.fileName.substringAfterLast('.', "bin").lowercase().take(8)
         val key = "$reelPrefix/$reelId/source/${UUID.randomUUID()}.$extension"
@@ -65,7 +72,11 @@ class ReelServiceImpl(
             caption = request.caption?.trim()?.takeIf(String::isNotEmpty),
             sourceObjectKey = key,
             contentType = request.contentType,
-            sourceSizeBytes = request.sizeBytes
+            sourceSizeBytes = request.sizeBytes,
+            locationId = request.locationId,
+            commentsEnabled = commentsEnabled(request.commentsEnabled, request.hideComments),
+            hideLikeCount = request.hideLikeCount,
+            hideShareCount = request.hideShareCount
         ))
         saveTags(reelId, request.taggedAccountIds, taggedProfiles)
         val upload = storage.createUpload(key, request.contentType, storageProperties.uploadUrlTtl)
@@ -185,24 +196,38 @@ class ReelServiceImpl(
         val NO_ACCOUNT: UUID = UUID(0, 0)
     }
 
-    private fun response(reel: Reel, saved: Boolean?, liked: Boolean) = ReelResponse(
-        id = reel.id,
-        ownerAccountId = reel.ownerAccountId,
-        caption = reel.caption,
-        status = reel.status,
-        playbackUrl = reel.publishedObjectKey?.let { storage.createDownloadUrl(it, storageProperties.downloadUrlTtl) },
-        thumbnailUrl = reel.thumbnailObjectKey?.let { storage.createDownloadUrl(it, storageProperties.downloadUrlTtl) },
-        durationSeconds = reel.durationSeconds,
-        taggedAccounts = taggedAccounts(reel.id),
-        canShareToStory = canShareToStory(null, reel.ownerAccountId),
-        likeCount = likeRepository.countByContentId(reel.id),
-        liked = liked,
-        commentCount = commentRepository.countByContentId(reel.id),
-        publishedAt = reel.publishedAt,
-        createdAt = reel.createdAt,
-        moderationReason = reel.moderationReason,
-        saved = saved
-    )
+    private fun response(reel: Reel, saved: Boolean?, liked: Boolean): ReelResponse {
+        val likeCount = likeRepository.countByContentId(reel.id)
+        val commentCount = commentRepository.countByContentId(reel.id)
+        val shareCount = contentShareService.countContentShares(reel.id)
+        return ReelResponse(
+            id = reel.id,
+            ownerAccountId = reel.ownerAccountId,
+            caption = reel.caption,
+            status = reel.status,
+            playbackUrl = reel.publishedObjectKey?.let { storage.createDownloadUrl(it, storageProperties.downloadUrlTtl) },
+            thumbnailUrl = reel.thumbnailObjectKey?.let { storage.createDownloadUrl(it, storageProperties.downloadUrlTtl) },
+            durationSeconds = reel.durationSeconds,
+            taggedAccounts = taggedAccounts(reel.id),
+            location = location(reel.locationId),
+            canShareToStory = canShareToStory(null, reel.ownerAccountId),
+            commentsEnabled = reel.commentsEnabled,
+            hideComments = !reel.commentsEnabled,
+            hideLikeCount = reel.hideLikeCount,
+            hideShareCount = reel.hideShareCount,
+            likeCount = likeCount,
+            likeCountDisplay = likeCount.toDisplayCount(),
+            liked = liked,
+            commentCount = commentCount,
+            commentCountDisplay = commentCount.toDisplayCount(),
+            shareCount = shareCount,
+            shareCountDisplay = shareCount.toDisplayCount(),
+            publishedAt = reel.publishedAt,
+            createdAt = reel.createdAt,
+            moderationReason = reel.moderationReason,
+            saved = saved
+        )
+    }
 
     private fun response(
         reel: Reel,
@@ -210,24 +235,38 @@ class ReelServiceImpl(
         liked: Boolean,
         taggedAccounts: List<ProfileSummaryResponse>,
         canShareToStory: Boolean
-    ) = ReelResponse(
-        id = reel.id,
-        ownerAccountId = reel.ownerAccountId,
-        caption = reel.caption,
-        status = reel.status,
-        playbackUrl = reel.publishedObjectKey?.let { storage.createDownloadUrl(it, storageProperties.downloadUrlTtl) },
-        thumbnailUrl = reel.thumbnailObjectKey?.let { storage.createDownloadUrl(it, storageProperties.downloadUrlTtl) },
-        durationSeconds = reel.durationSeconds,
-        taggedAccounts = taggedAccounts,
-        canShareToStory = canShareToStory,
-        likeCount = likeRepository.countByContentId(reel.id),
-        liked = liked,
-        commentCount = commentRepository.countByContentId(reel.id),
-        publishedAt = reel.publishedAt,
-        createdAt = reel.createdAt,
-        moderationReason = reel.moderationReason,
-        saved = saved
-    )
+    ): ReelResponse {
+        val likeCount = likeRepository.countByContentId(reel.id)
+        val commentCount = commentRepository.countByContentId(reel.id)
+        val shareCount = contentShareService.countContentShares(reel.id)
+        return ReelResponse(
+            id = reel.id,
+            ownerAccountId = reel.ownerAccountId,
+            caption = reel.caption,
+            status = reel.status,
+            playbackUrl = reel.publishedObjectKey?.let { storage.createDownloadUrl(it, storageProperties.downloadUrlTtl) },
+            thumbnailUrl = reel.thumbnailObjectKey?.let { storage.createDownloadUrl(it, storageProperties.downloadUrlTtl) },
+            durationSeconds = reel.durationSeconds,
+            taggedAccounts = taggedAccounts,
+            location = location(reel.locationId),
+            canShareToStory = canShareToStory,
+            commentsEnabled = reel.commentsEnabled,
+            hideComments = !reel.commentsEnabled,
+            hideLikeCount = reel.hideLikeCount,
+            hideShareCount = reel.hideShareCount,
+            likeCount = likeCount,
+            likeCountDisplay = likeCount.toDisplayCount(),
+            liked = liked,
+            commentCount = commentCount,
+            commentCountDisplay = commentCount.toDisplayCount(),
+            shareCount = shareCount,
+            shareCountDisplay = shareCount.toDisplayCount(),
+            publishedAt = reel.publishedAt,
+            createdAt = reel.createdAt,
+            moderationReason = reel.moderationReason,
+            saved = saved
+        )
+    }
 
     private fun responses(reels: List<Reel>, viewerAccountId: UUID?): List<ReelResponse> {
         val savedIds = savedContentIds(viewerAccountId, reels.map(Reel::id))
@@ -254,6 +293,9 @@ class ReelServiceImpl(
         ownerAccountId: UUID,
         publicOwnerIds: Set<UUID>
     ): Boolean = viewerAccountId != null && (viewerAccountId == ownerAccountId || ownerAccountId in publicOwnerIds)
+
+    private fun commentsEnabled(commentsEnabled: Boolean, hideComments: Boolean): Boolean =
+        commentsEnabled && !hideComments
 
     private fun publicOwnerIds(ownerAccountIds: Set<UUID>): Set<UUID> =
         if (ownerAccountIds.isEmpty()) emptySet()
@@ -331,4 +373,13 @@ class ReelServiceImpl(
         if (accountId == null || contentIds.isEmpty()) emptySet()
         else savedContentRepository.findByAccountIdAndContentIdIn(accountId, contentIds)
             .mapTo(mutableSetOf()) { it.contentId }
+
+    private fun validateLocation(locationId: UUID?) {
+        require(locationId == null || locationRepository.existsById(locationId)) {
+            "Location was not found"
+        }
+    }
+
+    private fun location(locationId: UUID?) =
+        locationId?.let { locationRepository.findById(it).orElse(null)?.toSummaryResponse() }
 }

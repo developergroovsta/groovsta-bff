@@ -6,8 +6,11 @@ import com.groovsta.content.dto.CommentPageResponse
 import com.groovsta.content.dto.CommentLikeResponse
 import com.groovsta.content.dto.CommentViewerStateResponse
 import com.groovsta.content.dto.CreateCommentRequest
+import com.groovsta.content.dto.CreateShareRequest
 import com.groovsta.content.dto.LikeResponse
+import com.groovsta.content.dto.ShareResponse
 import com.groovsta.content.dto.StoryLikeResponse
+import com.groovsta.content.dto.toDisplayCount
 import com.groovsta.content.model.ContentComment
 import com.groovsta.content.model.ContentCommentMention
 import com.groovsta.content.model.ContentLike
@@ -19,6 +22,7 @@ import com.groovsta.content.repository.ContentItemRepository
 import com.groovsta.content.repository.ContentLikeRepository
 import com.groovsta.content.repository.StoryRepository
 import com.groovsta.content.service.EngagementService
+import com.groovsta.content.service.ContentShareService
 import com.groovsta.content.service.StoryService
 import com.groovsta.identity.dto.response.ProfileSummaryResponse
 import com.groovsta.identity.dto.response.ProfileSummaryPageResponse
@@ -48,6 +52,7 @@ class EngagementServiceImpl(
     private val storyRepository: StoryRepository,
     private val profileService: ProfileService,
     private val storyService: StoryService,
+    private val contentShareService: ContentShareService,
     private val notificationPublisher: NotificationPublisher,
     private val rewardEventPublisher: RewardEventPublisher
 ) : EngagementService {
@@ -86,6 +91,23 @@ class EngagementServiceImpl(
         return LikeResponse(contentId, false, likeRepository.countByContentId(contentId))
     }
 
+    @Transactional
+    override fun share(accountId: UUID, contentId: UUID, request: CreateShareRequest): ShareResponse {
+        published(contentId)
+        return contentShareService.recordContentShare(accountId, contentId, request.channel)
+    }
+
+    @Transactional(readOnly = true)
+    override fun sharers(
+        viewerAccountId: UUID?,
+        contentId: UUID,
+        cursor: String?,
+        limit: Int
+    ): ProfileSummaryPageResponse {
+        published(contentId)
+        return contentShareService.contentSharers(contentId, cursor, limit)
+    }
+
     @Transactional(readOnly = true)
     override fun likers(
         viewerAccountId: UUID?,
@@ -105,6 +127,7 @@ class EngagementServiceImpl(
     @Transactional
     override fun comment(accountId: UUID, contentId: UUID, request: CreateCommentRequest): CommentResponse {
         val content = published(contentId)
+        ensureCommentsEnabled(content.commentsEnabled)
         val replyTarget = request.replyToCommentId?.let { replyToId ->
             commentRepository.findById(replyToId).orElseThrow { notFound("Reply target") }.also {
                 if (it.contentId != contentId || it.deletedAt != null) throw notFound("Reply target")
@@ -156,18 +179,27 @@ class EngagementServiceImpl(
                 )
             )
         }
-        return response(comment, accountId, author, mentions, replyCount = 0, likeCount = 0, viewerLiked = false)
+        return response(
+            comment,
+            accountId,
+            author,
+            mentions,
+            replyCount = 0,
+            likeCount = 0,
+            viewerLiked = false,
+            commentsEnabled = content.commentsEnabled
+        )
     }
 
     @Transactional(readOnly = true)
     override fun comments(viewerAccountId: UUID?, contentId: UUID, cursor: String?, limit: Int): CommentPageResponse {
-        published(contentId)
+        val content = published(contentId)
         val pageSize = limit.coerceIn(1, 100)
         val pageable = PageRequest.of(0, pageSize + 1)
         val comments = cursor?.let(CommentCursor::decode)?.let {
             commentRepository.findRootCommentsAfter(contentId, it.createdAt, it.id, pageable)
         } ?: commentRepository.findByContentIdAndDepthOrderByCreatedAtDescIdDesc(contentId, 0, pageable)
-        return page(comments, viewerAccountId, pageSize)
+        return page(comments, viewerAccountId, pageSize, content.commentsEnabled)
     }
 
     @Transactional(readOnly = true)
@@ -178,7 +210,7 @@ class EngagementServiceImpl(
         cursor: String?,
         limit: Int
     ): CommentPageResponse {
-        published(contentId)
+        val content = published(contentId)
         val root = commentRepository.findById(commentId).orElseThrow { notFound("Comment") }
         if (root.contentId != contentId || root.depth != 0) throw notFound("Comment")
         val pageSize = limit.coerceIn(1, 100)
@@ -188,7 +220,7 @@ class EngagementServiceImpl(
         } ?: commentRepository.findByContentIdAndThreadRootIdAndDepthOrderByCreatedAtAscIdAsc(
             contentId, root.id, 1, pageable
         )
-        return page(replies, viewerAccountId, pageSize)
+        return page(replies, viewerAccountId, pageSize, content.commentsEnabled)
     }
 
     @Transactional
@@ -263,6 +295,23 @@ class EngagementServiceImpl(
         return StoryLikeResponse(storyId, false, likeRepository.countByStoryId(storyId))
     }
 
+    @Transactional
+    override fun shareStory(accountId: UUID, storyId: UUID, request: CreateShareRequest): ShareResponse {
+        storyService.ensureVisible(accountId, storyId)
+        return contentShareService.recordStoryShare(accountId, storyId, request.channel)
+    }
+
+    @Transactional(readOnly = true)
+    override fun storySharers(
+        viewerAccountId: UUID?,
+        storyId: UUID,
+        cursor: String?,
+        limit: Int
+    ): ProfileSummaryPageResponse {
+        storyService.ensureVisible(viewerAccountId, storyId)
+        return contentShareService.storySharers(storyId, cursor, limit)
+    }
+
     @Transactional(readOnly = true)
     override fun storyLikers(
         viewerAccountId: UUID?,
@@ -287,6 +336,7 @@ class EngagementServiceImpl(
     ): CommentResponse {
         storyService.ensureVisible(accountId, storyId)
         val story = storyRepository.findById(storyId).orElseThrow { notFound("Story") }
+        ensureCommentsEnabled(story.commentsEnabled)
         val replyTarget = request.replyToCommentId?.let { replyToId ->
             commentRepository.findById(replyToId).orElseThrow { notFound("Reply target") }.also {
                 if (it.storyId != storyId || it.deletedAt != null) throw notFound("Reply target")
@@ -338,7 +388,16 @@ class EngagementServiceImpl(
                 )
             )
         }
-        return response(comment, accountId, author, mentions, replyCount = 0, likeCount = 0, viewerLiked = false)
+        return response(
+            comment,
+            accountId,
+            author,
+            mentions,
+            replyCount = 0,
+            likeCount = 0,
+            viewerLiked = false,
+            commentsEnabled = story.commentsEnabled
+        )
     }
 
     @Transactional(readOnly = true)
@@ -349,12 +408,13 @@ class EngagementServiceImpl(
         limit: Int
     ): CommentPageResponse {
         storyService.ensureVisible(viewerAccountId, storyId)
+        val story = storyRepository.findById(storyId).orElseThrow { notFound("Story") }
         val pageSize = limit.coerceIn(1, 100)
         val pageable = PageRequest.of(0, pageSize + 1)
         val comments = cursor?.let(CommentCursor::decode)?.let {
             commentRepository.findStoryRootCommentsAfter(storyId, it.createdAt, it.id, pageable)
         } ?: commentRepository.findByStoryIdAndDepthOrderByCreatedAtDescIdDesc(storyId, 0, pageable)
-        return page(comments, viewerAccountId, pageSize)
+        return page(comments, viewerAccountId, pageSize, story.commentsEnabled)
     }
 
     @Transactional(readOnly = true)
@@ -366,6 +426,7 @@ class EngagementServiceImpl(
         limit: Int
     ): CommentPageResponse {
         storyService.ensureVisible(viewerAccountId, storyId)
+        val story = storyRepository.findById(storyId).orElseThrow { notFound("Story") }
         val root = commentRepository.findById(commentId).orElseThrow { notFound("Comment") }
         if (root.storyId != storyId || root.depth != 0) throw notFound("Comment")
         val pageSize = limit.coerceIn(1, 100)
@@ -375,7 +436,7 @@ class EngagementServiceImpl(
         } ?: commentRepository.findByStoryIdAndThreadRootIdAndDepthOrderByCreatedAtAscIdAsc(
             storyId, root.id, 1, pageable
         )
-        return page(replies, viewerAccountId, pageSize)
+        return page(replies, viewerAccountId, pageSize, story.commentsEnabled)
     }
 
     @Transactional
@@ -431,6 +492,10 @@ class EngagementServiceImpl(
             }
         }
 
+    private fun ensureCommentsEnabled(commentsEnabled: Boolean) {
+        if (!commentsEnabled) throw ResponseStatusException(HttpStatus.FORBIDDEN, "Comments are turned off")
+    }
+
     private fun softDelete(comment: ContentComment) {
         if (comment.deletedAt == null) {
             comment.text = ""
@@ -473,7 +538,12 @@ class EngagementServiceImpl(
         return uniqueMentions.mapTo(mutableSetOf(), ContentCommentMention::mentionedAccountId)
     }
 
-    private fun page(comments: List<ContentComment>, viewerAccountId: UUID?, pageSize: Int): CommentPageResponse {
+    private fun page(
+        comments: List<ContentComment>,
+        viewerAccountId: UUID?,
+        pageSize: Int,
+        commentsEnabled: Boolean
+    ): CommentPageResponse {
         val page = comments.take(pageSize)
         val authors = profileService.summaries(page.map { it.accountId }.toSet())
         val mentions = if (page.isEmpty()) emptyMap() else mentionRepository
@@ -497,7 +567,8 @@ class EngagementServiceImpl(
                 mentions = mentions[comment.id].orEmpty(),
                 replyCount = replyCounts[comment.id] ?: 0,
                 likeCount = if (comment.deletedAt == null) likeCounts[comment.id] ?: 0 else 0,
-                viewerLiked = comment.deletedAt == null && comment.id in likedCommentIds
+                viewerLiked = comment.deletedAt == null && comment.id in likedCommentIds,
+                commentsEnabled = commentsEnabled
             )
         }
         return CommentPageResponse(
@@ -526,7 +597,8 @@ class EngagementServiceImpl(
         mentions: List<ContentCommentMention>,
         replyCount: Long,
         likeCount: Long,
-        viewerLiked: Boolean
+        viewerLiked: Boolean,
+        commentsEnabled: Boolean
     ) = CommentResponse(
         id = comment.id,
         contentId = comment.contentId,
@@ -541,12 +613,14 @@ class EngagementServiceImpl(
             CommentMentionResponse(it.mentionedAccountId, it.handle, it.startIndex, it.endExclusive)
         },
         replyCount = replyCount,
+        replyCountDisplay = replyCount.toDisplayCount(),
         likeCount = likeCount,
+        likeCountDisplay = likeCount.toDisplayCount(),
         createdAt = comment.createdAt,
         isDeleted = comment.deletedAt != null,
         viewerState = CommentViewerStateResponse(
             canDelete = comment.deletedAt == null && viewerAccountId == comment.accountId,
-            canReply = comment.deletedAt == null && viewerAccountId != null,
+            canReply = commentsEnabled && comment.deletedAt == null && viewerAccountId != null,
             canLike = comment.deletedAt == null && viewerAccountId != null,
             liked = viewerLiked
         )

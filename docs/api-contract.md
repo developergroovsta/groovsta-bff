@@ -66,6 +66,7 @@ If **Authorize** is not visible after deployment, open `/v3/api-docs` and confir
 - Phone numbers use E.164, for example `+919876543210`.
 - Nullable fields may be `null` or absent in requests only when the request schema permits it.
 - Presigned S3 URLs are temporary. Never persist them as permanent media identifiers.
+- Count response fields keep raw numeric values and may also include a sibling display string. Display strings use compact Indian notation: `1K` at 1,000, up to one decimal place, `L` at lakh, and `Cr` at crore. Examples: `999`, `1K`, `1.5K`, `1L`, `1.2Cr`.
 
 ### Standard error response
 
@@ -88,10 +89,12 @@ Common statuses and codes:
 |---:|---|---|
 | `400` | `VALIDATION_FAILED` or `INVALID_REQUEST` | Invalid JSON, headers, parameters, state transition, or field validation |
 | `401` | `INVALID_CREDENTIALS`, `INVALID_EXTERNAL_IDENTITY`, or `401_UNAUTHORIZED` | Missing/expired bearer token, invalid Google identity, or invalid internal/admin secret |
+| `403` | `403_FORBIDDEN` | Authenticated caller is not allowed to perform the requested action |
 | `404` | `NOT_FOUND` or `404_NOT_FOUND` | Requested resource is unavailable or hidden by access rules |
 | `409` | `CONFLICT` | Duplicate account/handle or already-verified contact |
 | `410` | `410_GONE` | A call invitation expired before it was accepted |
 | `422` | `INVALID_VERIFICATION` or `INVALID_EXTERNAL_REGISTRATION` | Missing, expired, invalid, consumed, or wrong-purpose verification/registration token |
+| `503` | `EMAIL_DELIVERY_FAILED` | Verification email delivery is temporarily unavailable |
 | `500` | `INTERNAL_SERVER_ERROR` | Unexpected backend failure |
 
 Frontend clients should branch primarily on HTTP status and `code`, not human-readable `message`.
@@ -216,10 +219,31 @@ Channels: `EMAIL`, `PHONE`. The destination is masked.
       "viewerState": null
     }
   ],
+  "location": {
+    "id": "31d7d1e4-1f8c-40e6-86c2-50713d493777",
+    "provider": "OLA",
+    "providerPlaceId": "ola-platform:5000039498427",
+    "name": "Koramangala",
+    "formattedAddress": "Koramangala, Bengaluru, Karnataka, India",
+    "latitude": 12.9352,
+    "longitude": 77.6245,
+    "city": "Bengaluru",
+    "state": "Karnataka",
+    "country": "India",
+    "postalCode": null
+  },
   "canShareToStory": true,
+  "commentsEnabled": true,
+  "hideComments": false,
+  "hideLikeCount": false,
+  "hideShareCount": false,
   "likeCount": 10,
+  "likeCountDisplay": "10",
   "liked": true,
   "commentCount": 3,
+  "commentCountDisplay": "3",
+  "shareCount": 1200,
+  "shareCountDisplay": "1.2K",
   "publishedAt": "2026-07-14T10:00:00Z",
   "createdAt": "2026-07-14T09:40:00Z",
   "moderationReason": null,
@@ -262,10 +286,31 @@ Media URLs, duration, and publication time are nullable before their correspondi
       "viewerState": null
     }
   ],
+  "location": {
+    "id": "31d7d1e4-1f8c-40e6-86c2-50713d493777",
+    "provider": "OLA",
+    "providerPlaceId": "ola-platform:5000039498427",
+    "name": "Koramangala",
+    "formattedAddress": "Koramangala, Bengaluru, Karnataka, India",
+    "latitude": 12.9352,
+    "longitude": 77.6245,
+    "city": "Bengaluru",
+    "state": "Karnataka",
+    "country": "India",
+    "postalCode": null
+  },
   "canShareToStory": true,
+  "commentsEnabled": true,
+  "hideComments": false,
+  "hideLikeCount": false,
+  "hideShareCount": false,
   "likeCount": 18,
+  "likeCountDisplay": "18",
   "liked": false,
   "commentCount": 4,
+  "commentCountDisplay": "4",
+  "shareCount": 1200,
+  "shareCountDisplay": "1.2K",
   "publishedAt": "2026-07-15T10:00:00Z",
   "createdAt": "2026-07-15T09:55:00Z",
   "saved": false
@@ -274,7 +319,15 @@ Media URLs, duration, and publication time are nullable before their correspondi
 
 Post statuses: `UPLOADING`, `PUBLISHED`, `TAKEN_DOWN`. The `media` array is ordered by `position`. Each `imageUrl` is temporary and must not be stored as a permanent identifier. `publishedAt` is nullable while the owner is retrieving an uploading post.
 
+`location` is nullable on `PostResponse`, `ReelResponse`, `ContentFeedItemResponse.post`, `ContentFeedItemResponse.reel`, and `StoryResponse`. When present, use `location.id` for navigation and later content queries. `providerPlaceId` is provider metadata only; do not store it as the frontend's primary identifier.
+
 `liked` is a non-null viewer-specific boolean on `PostResponse`, `ReelResponse`, and `StoryResponse`. It is `true` only when the authenticated viewer has liked that item and `false` for other viewers and anonymous requests. Feed pages resolve it with one batched query. `saved` remains `true` or `false` with a valid bearer token and `null` anonymously.
+
+`likeCountDisplay`, `commentCountDisplay`, and `shareCountDisplay` are present beside the raw `likeCount`, `commentCount`, and `shareCount` on `PostResponse`, `ReelResponse`, and `StoryResponse`.
+
+`hideComments`, `hideLikeCount`, and `hideShareCount` are creator settings on `PostResponse`, `ReelResponse`, and `StoryResponse`. `commentsEnabled` is retained for compatibility and is the inverse of `hideComments`. When comments are hidden/disabled, existing comments remain readable but creating a new top-level comment or reply returns `403`. When `hideLikeCount` or `hideShareCount` is `true`, clients must hide those public counts. Raw numeric count fields remain in the response for backward compatibility.
+
+`shareCount` counts one share per user per target. It is incremented by share actions other than copy-link: direct-message content shares, sharing post/reel to story, resharing a story, and explicit share records through the engagement endpoints. Copy-link actions must use channel `COPY_LINK`; they return a response but do not increment the stored count.
 
 ## Endpoint summary
 
@@ -323,6 +376,12 @@ Post statuses: `UPLOADING`, `PUBLISHED`, `TAKEN_DOWN`. The `media` array is orde
 | Mobile | `DELETE` | `/api/v1/content/{contentId}/saves` | Bearer | `200` `SavedContentResponse` |
 | Mobile | `GET` | `/api/v1/me/saved/posts` | Bearer | `200` `SavedContentPageResponse` |
 | Mobile | `GET` | `/api/v1/me/saved/reels` | Bearer | `200` `SavedContentPageResponse` |
+| Mobile | `GET` | `/api/v1/locations/search` | Bearer | `200` `LocationSearchResponse` |
+| Mobile | `POST` | `/api/v1/locations/resolve` | Bearer | `200` `LocationSummaryResponse` |
+| Mobile | `GET` | `/api/v1/locations/reverse` | Bearer | `200` `LocationSummaryResponse` |
+| Public/mobile | `GET` | `/api/v1/locations/{locationId}` | None | `200` `LocationSummaryResponse` |
+| Public/mobile | `GET` | `/api/v1/locations/{locationId}/content` | Optional bearer | `200` `LocationContentPageResponse` |
+| Public/mobile | `GET` | `/api/v1/locations/{locationId}/stories` | Optional bearer | `200` `StoryPageResponse` |
 | Mobile | `GET` | `/api/v1/chat/conversations` | Bearer | `200` `ChatConversationPageResponse` |
 | Mobile | `GET` | `/api/v1/chat/conversations/{conversationId}/messages` | Bearer | `200` `ChatMessagePageResponse` |
 | Mobile | `POST` | `/api/v1/chat/messages` | Bearer | `201` `ChatMessageResponse` |
@@ -359,6 +418,8 @@ Post statuses: `UPLOADING`, `PUBLISHED`, `TAKEN_DOWN`. The `media` array is orde
 | Public/mobile | `GET` | `/api/v1/stories/{storyId}/likes` | Optional bearer | `200` `ProfileSummaryPageResponse` |
 | Mobile | `POST` | `/api/v1/stories/{storyId}/likes` | Bearer | `200` `StoryLikeResponse` |
 | Mobile | `DELETE` | `/api/v1/stories/{storyId}/likes` | Bearer | `200` `StoryLikeResponse` |
+| Public/mobile | `GET` | `/api/v1/stories/{storyId}/shares` | Optional bearer | `200` `ProfileSummaryPageResponse` |
+| Mobile | `POST` | `/api/v1/stories/{storyId}/shares` | Bearer | `200` `ShareResponse` |
 | Public/mobile | `GET` | `/api/v1/stories/{storyId}/comments` | Optional bearer | `200` `CommentPageResponse` |
 | Mobile | `POST` | `/api/v1/stories/{storyId}/comments` | Bearer | `200` `CommentResponse` |
 | Public/mobile | `GET` | `/api/v1/stories/{storyId}/comments/{commentId}/replies` | Optional bearer | `200` `CommentPageResponse` |
@@ -378,6 +439,8 @@ Post statuses: `UPLOADING`, `PUBLISHED`, `TAKEN_DOWN`. The `media` array is orde
 | Public/mobile | `GET` | `/api/v1/content/{contentId}/likes` | Optional bearer | `200` `ProfileSummaryPageResponse` |
 | Mobile | `POST` | `/api/v1/content/{contentId}/likes` | Bearer | `200` `LikeResponse` |
 | Mobile | `DELETE` | `/api/v1/content/{contentId}/likes` | Bearer | `200` `LikeResponse` |
+| Public/mobile | `GET` | `/api/v1/content/{contentId}/shares` | Optional bearer | `200` `ProfileSummaryPageResponse` |
+| Mobile | `POST` | `/api/v1/content/{contentId}/shares` | Bearer | `200` `ShareResponse` |
 | Mobile | `POST` | `/api/v1/content/{contentId}/comments` | Bearer | `200` `CommentResponse` |
 | Public/mobile | `GET` | `/api/v1/content/{contentId}/comments` | Optional bearer | `200` `CommentPageResponse` |
 | Public/mobile | `GET` | `/api/v1/content/{contentId}/comments/{commentId}/replies` | Optional bearer | `200` `CommentPageResponse` |
@@ -675,6 +738,17 @@ Phone variant:
 ```
 
 Exactly one verified contact is required. Returns `200 VerificationChallengeResponse`.
+
+When the email variant is used, the backend sends the password-reset message to the
+verified email address. The email contains the six-digit code, the configured code
+expiry, and a link-free instruction to enter the code in the app. The code is never
+returned in the HTTP response. If email delivery is unavailable, the request fails
+with `503 EMAIL_DELIVERY_FAILED`; clients should allow the user to retry.
+
+The email subject is `Reset your Groovsta password` and the provider template is
+`password-reset-email.html`. Template variables are `{{code}}`,
+`{{expiresInMinutes}}`, and `{{currentYear}}`. The delivery adapter must HTML-escape
+all substituted values and must not log the raw code in production.
 
 ### Reset password
 
@@ -1032,6 +1106,172 @@ Mute behavior:
 - Explicit `/profiles/{handle}/posts`, `/profiles/{handle}/reels`, `/profiles/{handle}/stories`, and direct item endpoints remain available subject to normal visibility rules.
 - Anonymous feeds have no mute preferences.
 
+## Location endpoints
+
+Location APIs are backend-owned. The mobile app must call Groovsta, not Ola Maps directly. The Ola API key stays on the backend and results are cached before provider calls are made.
+
+Search and reverse lookup require bearer auth to control paid provider usage. Location detail and tagged-content reads are public with optional bearer auth for private-account visibility.
+
+For Ola Maps keys restricted by allowed domain, backend must set `GROOVSTA_OLA_MAPS_ORIGIN` to the public API origin, for example `https://unequal-tamer-enjoying.ngrok-free.dev` in local ngrok testing.
+
+### Search locations
+
+```http
+GET /api/v1/locations/search?q=kora&lat=12.9352&lng=77.6245&limit=20
+Authorization: Bearer <accessToken>
+```
+
+Query parameters:
+
+- `q`: required search text. Default minimum length is 3 characters.
+- `lat`, `lng`: optional GPS bias. Use only when the user allowed location permission.
+- `limit`: defaults to 20 and is clamped by backend config.
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "id": "31d7d1e4-1f8c-40e6-86c2-50713d493777",
+      "provider": "OLA",
+      "providerPlaceId": "ola-platform:5000039498427",
+      "name": "Koramangala",
+      "formattedAddress": "Koramangala, Bengaluru, Karnataka, India",
+      "latitude": 12.9352,
+      "longitude": 77.6245,
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "country": "India",
+      "postalCode": null
+    }
+  ],
+  "source": "PROVIDER",
+  "cacheHit": false
+}
+```
+
+`source` values are `LOCAL`, `CACHE`, or `PROVIDER`. The backend first checks existing Groovsta locations, then persistent cached provider results, then Ola Maps if enabled and needed.
+
+Only real provider calls count against the backend's per-account location provider rate limit. Local DB hits and cache hits do not count.
+
+### Resolve a selected provider location
+
+Call this when the user selects a search result and the app wants to ensure the location is fully resolved before attaching it to content.
+
+```http
+POST /api/v1/locations/resolve
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+```
+
+```json
+{
+  "provider": "OLA",
+  "providerPlaceId": "ola-platform:5000039498427"
+}
+```
+
+Returns `LocationSummaryResponse`. Use the returned `id` as `locationId` in post, reel, and story create requests.
+
+### Reverse geocode current location
+
+```http
+GET /api/v1/locations/reverse?lat=12.9352&lng=77.6245
+Authorization: Bearer <accessToken>
+```
+
+Returns one `LocationSummaryResponse`. The backend caches reverse-geocode results by rounded coordinate bucket to reduce provider calls.
+
+### Get location details
+
+```http
+GET /api/v1/locations/{locationId}
+```
+
+Returns `LocationSummaryResponse`.
+
+### Get posts and reels tagged to a location
+
+```http
+GET /api/v1/locations/{locationId}/content?type=ALL&limit=20
+Authorization: Bearer <optional-accessToken>
+```
+
+Query parameters:
+
+- `type`: `ALL`, `POST`, or `REEL`; defaults to `ALL`.
+- `cursor`: opaque cursor from the previous response.
+- `limit`: defaults to 20 and is clamped to 1–50.
+
+Response:
+
+```json
+{
+  "location": {
+    "id": "31d7d1e4-1f8c-40e6-86c2-50713d493777",
+    "provider": "OLA",
+    "providerPlaceId": "ola-platform:5000039498427",
+    "name": "Koramangala",
+    "formattedAddress": "Koramangala, Bengaluru, Karnataka, India",
+    "latitude": 12.9352,
+    "longitude": 77.6245,
+    "city": "Bengaluru",
+    "state": "Karnataka",
+    "country": "India",
+    "postalCode": null
+  },
+  "items": [
+    {
+      "id": "b64f5eb5-e05d-494b-bb65-c5896bc0af70",
+      "type": "POST",
+      "author": {
+        "accountId": "550e8400-e29b-41d4-a716-446655440000",
+        "handle": "rajat_01",
+        "displayName": "Rajat Singh",
+        "avatarUrl": null,
+        "viewerState": null
+      },
+      "isFollowingAuthor": false,
+      "canShareToStory": true,
+      "saved": false,
+      "savedAt": null,
+      "post": {
+        "id": "b64f5eb5-e05d-494b-bb65-c5896bc0af70",
+        "status": "PUBLISHED",
+        "location": {
+          "id": "31d7d1e4-1f8c-40e6-86c2-50713d493777",
+          "provider": "OLA",
+          "providerPlaceId": "ola-platform:5000039498427",
+          "name": "Koramangala",
+          "formattedAddress": "Koramangala, Bengaluru, Karnataka, India",
+          "latitude": 12.9352,
+          "longitude": 77.6245,
+          "city": "Bengaluru",
+          "state": "Karnataka",
+          "country": "India",
+          "postalCode": null
+        }
+      },
+      "reel": null,
+      "publishedAt": "2026-07-15T10:00:00Z"
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+Visibility follows the same rules as home/profile feeds: public-profile content is visible to everyone, private-profile content is visible only to the owner and active followers.
+
+### Get active stories tagged to a location
+
+```http
+GET /api/v1/locations/{locationId}/stories?limit=20
+Authorization: Bearer <optional-accessToken>
+```
+
+Returns `StoryPageResponse` using the normal `StoryResponse` shape. Only active, non-expired stories visible to the viewer are returned.
+
 ## Content upload endpoints
 
 Posts and reels use one controller and one upload contract. Set `type` to `POST` or `REEL`.
@@ -1047,6 +1287,10 @@ Authorization: Bearer <accessToken>
 {
   "type": "POST",
   "caption": "Photos from tonight",
+  "locationId": "31d7d1e4-1f8c-40e6-86c2-50713d493777",
+  "hideComments": false,
+  "hideLikeCount": false,
+  "hideShareCount": false,
   "taggedAccountIds": [
     "3e050d27-7567-45c0-9450-f8b01beb03c8"
   ],
@@ -1057,7 +1301,7 @@ Authorization: Bearer <accessToken>
 }
 ```
 
-A post requires 1–10 JPEG, PNG, or WebP images. The default configured limit is 20 MiB per image. `taggedAccountIds` is optional, accepts at most 20 distinct active account IDs, and causes notifications to be sent only after the post is successfully published.
+A post requires 1–10 JPEG, PNG, or WebP images. The default configured limit is 20 MiB per image. `locationId` is optional; when present it must be a valid Groovsta location returned by `/api/v1/locations/search`, `/api/v1/locations/resolve`, or `/api/v1/locations/reverse`. `hideComments`, `hideLikeCount`, and `hideShareCount` default to `false`; send `true` for the creator toggles enabled during creation. `commentsEnabled` is still accepted for compatibility, but new clients should prefer `hideComments`. `taggedAccountIds` is optional, accepts at most 20 distinct active account IDs, and causes notifications to be sent only after the post is successfully published.
 
 ### Initiate a reel
 
@@ -1067,6 +1311,10 @@ Use the same endpoint with exactly one video:
 {
   "type": "REEL",
   "caption": "My first reel",
+  "locationId": "31d7d1e4-1f8c-40e6-86c2-50713d493777",
+  "hideComments": false,
+  "hideLikeCount": false,
+  "hideShareCount": false,
   "taggedAccountIds": [
     "3e050d27-7567-45c0-9450-f8b01beb03c8"
   ],
@@ -1076,7 +1324,7 @@ Use the same endpoint with exactly one video:
 }
 ```
 
-A reel accepts `video/mp4`, `video/quicktime`, or `video/webm`. The default configured limit is 500 MiB. `taggedAccountIds` follows the same rules as posts, and notifications are sent only after the reel is published.
+A reel accepts `video/mp4`, `video/quicktime`, or `video/webm`. The default configured limit is 500 MiB. `locationId`, `hideComments`, `hideLikeCount`, and `hideShareCount` follow the same rules as posts. `taggedAccountIds` follows the same rules as posts, and notifications are sent only after the reel is published.
 
 Both variants return `ContentUploadResponse`:
 
@@ -2332,6 +2580,10 @@ Content-Type: application/json
 {
   "visibility": "CLOSE_FRIENDS",
   "caption": "Backstage",
+  "locationId": "31d7d1e4-1f8c-40e6-86c2-50713d493777",
+  "hideComments": false,
+  "hideLikeCount": false,
+  "hideShareCount": false,
   "media": {
     "fileName": "backstage.mp4",
     "contentType": "video/mp4",
@@ -2344,7 +2596,7 @@ Content-Type: application/json
 }
 ```
 
-`media` accepts one JPEG, PNG, WebP, MP4, QuickTime, or WebM object. Default limits are 20 MiB for an image and 500 MiB for a video. `caption` is nullable and limited to 2,200 characters. At most 20 distinct, active accounts may be tagged.
+`media` accepts one JPEG, PNG, WebP, MP4, QuickTime, or WebM object. Default limits are 20 MiB for an image and 500 MiB for a video. `caption` is nullable and limited to 2,200 characters. `locationId` is optional; when present it must be a valid Groovsta location returned by the location APIs. `hideComments`, `hideLikeCount`, and `hideShareCount` default to `false`; send `true` for the creator toggles enabled during creation. At most 20 distinct, active accounts may be tagged.
 
 `linkedContentId` is optional when media is uploaded. When supplied, it must identify a `PUBLISHED` post or reel owned by the creator or by another active account with a public profile. The response exposes its type so the app can navigate to the correct screen. Private-profile content cannot be republished through another account's story.
 
@@ -2372,9 +2624,17 @@ Returns `StoryCreateResponse`:
     "durationSeconds": null,
     "failureReason": null,
     "moderationReason": null,
+    "commentsEnabled": true,
+    "hideComments": false,
+    "hideLikeCount": false,
+    "hideShareCount": false,
     "likeCount": 0,
+    "likeCountDisplay": "0",
     "liked": false,
     "commentCount": 0,
+    "commentCountDisplay": "0",
+    "shareCount": 0,
+    "shareCountDisplay": "0",
     "linkedContent": {
       "contentId": "7b8fc7e7-dc4c-4ca2-970b-c8d9cb4aac12",
       "type": "REEL"
@@ -2388,6 +2648,19 @@ Returns `StoryCreateResponse`:
         "viewerState": null
       }
     ],
+    "location": {
+      "id": "31d7d1e4-1f8c-40e6-86c2-50713d493777",
+      "provider": "OLA",
+      "providerPlaceId": "ola-platform:5000039498427",
+      "name": "Koramangala",
+      "formattedAddress": "Koramangala, Bengaluru, Karnataka, India",
+      "latitude": 12.9352,
+      "longitude": 77.6245,
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "country": "India",
+      "postalCode": null
+    },
     "publishedAt": null,
     "expiresAt": null,
     "expired": false,
@@ -2733,7 +3006,8 @@ Both operations are idempotent and return:
 {
   "storyId": "c22aed66-f64e-4a3c-a387-42dc1cd38e10",
   "liked": true,
-  "likeCount": 8
+  "likeCount": 8,
+  "likeCountDisplay": "8"
 }
 ```
 
@@ -2745,6 +3019,42 @@ Authorization: Bearer <optional-accessToken>
 ```
 
 This returns `ProfileSummaryPageResponse`, newest like first. Pass the opaque `nextCursor` unchanged; `limit` defaults to 20 and is clamped to 1–100.
+
+### Story shares
+
+To record a share:
+
+```http
+POST /api/v1/stories/{storyId}/shares
+Authorization: Bearer <accessToken>
+```
+
+```json
+{
+  "channel": "OTHER"
+}
+```
+
+Channels are `DIRECT_MESSAGE`, `STORY`, `EXTERNAL`, `OTHER`, and `COPY_LINK`. `COPY_LINK` is explicitly ignored for counting. All other channels count at most once per authenticated user per story. The response is:
+
+```json
+{
+  "targetId": "c22aed66-f64e-4a3c-a387-42dc1cd38e10",
+  "targetType": "STORY",
+  "shared": true,
+  "shareCount": 1200,
+  "shareCountDisplay": "1.2K"
+}
+```
+
+To open the story share-list screen:
+
+```http
+GET /api/v1/stories/{storyId}/shares?limit=20&cursor={optionalOpaqueCursor}
+Authorization: Bearer <optional-accessToken>
+```
+
+This returns `ProfileSummaryPageResponse`, newest share first. The viewer must currently be allowed to see the story. The UI should render only `avatarUrl`, `displayName`/username, and `handle` if that is all the design needs.
 
 Story comments use the same request, mention validation, one-level thread layout, pagination, comment-like response, and soft-deletion behavior documented for permanent content below. Replace `/api/v1/content/{contentId}` with `/api/v1/stories/{storyId}` in those comment paths. In a story `CommentResponse`, `storyId` contains the story UUID and `contentId` is `null`; for a post/reel comment, `contentId` is populated and `storyId` is `null`.
 
@@ -2763,7 +3073,8 @@ Authorization: Bearer <accessToken>
 {
   "contentId": "7b8fc7e7-dc4c-4ca2-970b-c8d9cb4aac12",
   "liked": true,
-  "likeCount": 11
+  "likeCount": 11,
+  "likeCountDisplay": "11"
 }
 ```
 
@@ -2804,6 +3115,44 @@ Authorization: Bearer <accessToken>
 
 Returns `LikeResponse` with `liked: false`. The operation is idempotent.
 
+### Share content
+
+To record a share:
+
+```http
+POST /api/v1/content/{contentId}/shares
+Authorization: Bearer <accessToken>
+```
+
+```json
+{
+  "channel": "OTHER"
+}
+```
+
+Channels are `DIRECT_MESSAGE`, `STORY`, `EXTERNAL`, `OTHER`, and `COPY_LINK`. `COPY_LINK` is explicitly ignored for counting. All other channels count at most once per authenticated user per post/reel. Direct chat content-share messages automatically record `DIRECT_MESSAGE`, and creating a story from a post/reel automatically records `STORY`.
+
+Returns:
+
+```json
+{
+  "targetId": "7b8fc7e7-dc4c-4ca2-970b-c8d9cb4aac12",
+  "targetType": "CONTENT",
+  "shared": true,
+  "shareCount": 1200,
+  "shareCountDisplay": "1.2K"
+}
+```
+
+To open the share-list screen:
+
+```http
+GET /api/v1/content/{contentId}/shares?limit=20&cursor={optionalOpaqueCursor}
+Authorization: Bearer <optional-accessToken>
+```
+
+This returns `ProfileSummaryPageResponse`, newest share first. The content must still be `PUBLISHED`. The UI should render only `avatarUrl`, `displayName`/username, and `handle` if that is all the design needs.
+
 ### Add comment
 
 ```http
@@ -2825,7 +3174,7 @@ Authorization: Bearer <accessToken>
 }
 ```
 
-`text` is nonblank and maximum 500 UTF-16 code units. `replyToCommentId` and `mentions` are optional. Mention positions use UTF-16 indexes, matching JavaScript and React Native. The backend verifies that the reply belongs to the same content and that every mention range contains the active account's current `@handle`.
+`text` is nonblank and maximum 500 UTF-16 code units. `replyToCommentId` and `mentions` are optional. Mention positions use UTF-16 indexes, matching JavaScript and React Native. The backend verifies that the reply belongs to the same content and that every mention range contains the active account's current `@handle`. If the parent post, reel, or story has `commentsEnabled: false`, creating a top-level comment or reply returns `403` with reason `Comments are turned off`.
 
 Top-level comments have `depth: 0`, point `threadRootId` to themselves, and have no `replyToCommentId`. All replies have `depth: 1`; replies to replies preserve the exact parent in `replyToCommentId` while remaining visually one level deep.
 
@@ -2856,7 +3205,9 @@ Returns:
     }
   ],
   "replyCount": 0,
+  "replyCountDisplay": "0",
   "likeCount": 4,
+  "likeCountDisplay": "4",
   "createdAt": "2026-07-19T10:15:00Z",
   "isDeleted": false,
   "viewerState": {
@@ -2906,7 +3257,8 @@ Returns:
 {
   "commentId": "2ca5a986-ef83-420f-9a8a-1150954b8d22",
   "liked": true,
-  "likeCount": 5
+  "likeCount": 5,
+  "likeCountDisplay": "5"
 }
 ```
 

@@ -89,6 +89,8 @@ class AuthenticationServiceImpl(
                 displayName = request.displayName.trim()
             )
         )
+        accountRepository.flush()
+        profileRepository.flush()
         rewardEventPublisher.signupCompleted(account.id)
         val session = identitySessionService.create(account.id, device)
         val verification = when {
@@ -302,7 +304,7 @@ class AuthenticationServiceImpl(
                 expiresAt = expiresAt
             )
         )
-        verificationDeliveryService.send(channel, destination, code)
+        verificationDeliveryService.send(channel, destination, code, purpose)
         return VerificationChallengeResponse(channel, mask(destination, channel), challenge.expiresAt)
     }
 

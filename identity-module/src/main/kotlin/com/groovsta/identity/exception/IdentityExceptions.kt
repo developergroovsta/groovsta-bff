@@ -11,3 +11,5 @@ class InvalidVerificationException(message: String) : RuntimeException(message)
 class InvalidExternalIdentityException : RuntimeException("Google authentication failed")
 
 class InvalidExternalRegistrationException(message: String) : RuntimeException(message)
+
+class VerificationDeliveryException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)

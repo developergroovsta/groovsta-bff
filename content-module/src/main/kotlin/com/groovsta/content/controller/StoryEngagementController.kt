@@ -1,6 +1,7 @@
 package com.groovsta.content.controller
 
 import com.groovsta.content.dto.CreateCommentRequest
+import com.groovsta.content.dto.CreateShareRequest
 import com.groovsta.content.service.EngagementService
 import com.groovsta.identity.security.AuthenticatedAccountResolver
 import com.groovsta.identity.web.OpenApiConfiguration
@@ -46,6 +47,26 @@ class StoryEngagementController(
         @Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) auth: String?,
         @PathVariable storyId: UUID
     ) = service.unlikeStory(resolver.resolve(auth), storyId)
+
+    @PostMapping("/shares")
+    @Operation(summary = "Record a story share", security = [SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)])
+    fun share(
+        @Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) auth: String?,
+        @PathVariable storyId: UUID,
+        @RequestBody(required = false) request: CreateShareRequest?
+    ) = service.shareStory(resolver.resolve(auth), storyId, request ?: CreateShareRequest())
+
+    @GetMapping("/shares")
+    @Operation(
+        summary = "List users who shared a visible story",
+        security = [SecurityRequirement(name = ""), SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)]
+    )
+    fun sharers(
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) auth: String?,
+        @PathVariable storyId: UUID,
+        @RequestParam(required = false) cursor: String?,
+        @RequestParam(defaultValue = "20") limit: Int
+    ) = personalized(service.storySharers(optionalAccountId(auth), storyId, cursor, limit))
 
     @PostMapping("/comments")
     @Operation(summary = "Comment on or reply within a visible story", security = [SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)])

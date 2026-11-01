@@ -1,6 +1,7 @@
 package com.groovsta.content.controller
 
 import com.groovsta.content.dto.CreateCommentRequest
+import com.groovsta.content.dto.CreateShareRequest
 import com.groovsta.content.service.EngagementService
 import com.groovsta.identity.security.AuthenticatedAccountResolver
 import com.groovsta.identity.web.OpenApiConfiguration
@@ -36,6 +37,26 @@ class EngagementController(private val service: EngagementService, private val r
     @DeleteMapping("/likes")
     @Operation(summary = "Remove a content like", security = [SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)])
     fun unlike(@Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) auth: String?, @PathVariable contentId: UUID) = service.unlike(resolver.resolve(auth), contentId)
+
+    @PostMapping("/shares")
+    @Operation(summary = "Record a content share", security = [SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)])
+    fun share(
+        @Parameter(hidden = true) @RequestHeader(HttpHeaders.AUTHORIZATION) auth: String?,
+        @PathVariable contentId: UUID,
+        @RequestBody(required = false) request: CreateShareRequest?
+    ) = service.share(resolver.resolve(auth), contentId, request ?: CreateShareRequest())
+
+    @GetMapping("/shares")
+    @Operation(
+        summary = "List users who shared a published post or reel",
+        security = [SecurityRequirement(name = ""), SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)]
+    )
+    fun sharers(
+        @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) auth: String?,
+        @PathVariable contentId: UUID,
+        @RequestParam(required = false) cursor: String?,
+        @RequestParam(defaultValue = "20") limit: Int
+    ) = service.sharers(optionalAccountId(auth), contentId, cursor, limit)
 
     @PostMapping("/comments")
     @Operation(summary = "Comment on a published post or reel", security = [SecurityRequirement(name = OpenApiConfiguration.BEARER_AUTH)])

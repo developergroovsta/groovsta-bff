@@ -41,8 +41,16 @@ class Story(
     var linkedContentId: UUID? = null,
     @Column(name = "linked_story_id")
     var linkedStoryId: UUID? = null,
+    @Column(name = "location_id")
+    var locationId: UUID? = null,
     @Column(name = "owns_media", nullable = false)
     var ownsMedia: Boolean = true,
+    @Column(name = "comments_enabled", nullable = false)
+    var commentsEnabled: Boolean = true,
+    @Column(name = "hide_like_count", nullable = false)
+    var hideLikeCount: Boolean = false,
+    @Column(name = "hide_share_count", nullable = false)
+    var hideShareCount: Boolean = false,
     @Column(name = "failure_reason", length = 1000)
     var failureReason: String? = null,
     @Column(name = "moderation_reason", length = 1000)

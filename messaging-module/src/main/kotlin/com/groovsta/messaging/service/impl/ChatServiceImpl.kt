@@ -1,5 +1,7 @@
 package com.groovsta.messaging.service.impl
 
+import com.groovsta.content.model.ContentShareChannel
+import com.groovsta.content.service.ContentShareService
 import com.groovsta.identity.exception.IdentityConflictException
 import com.groovsta.identity.service.ProfileService
 import com.groovsta.messaging.dto.ChatConversationPageResponse
@@ -60,6 +62,7 @@ class ChatServiceImpl(
     private val messageEventPublisher: ChatMessageEventPublisher,
     private val presenceService: ChatPresenceService,
     private val eventPublisher: ApplicationEventPublisher,
+    private val contentShareService: ContentShareService,
     private val notificationPublisher: NotificationPublisher
 ) : ChatService {
 
@@ -186,6 +189,13 @@ class ChatServiceImpl(
             )
         )
         conversationRepository.advanceLastMessage(conversation.id, message.id, message.createdAt)
+        if (request.type == ChatMessageType.CONTENT_SHARE) {
+            contentShareService.recordContentShare(
+                accountId,
+                requireNotNull(request.sharedContentId),
+                ContentShareChannel.DIRECT_MESSAGE
+            )
+        }
 
         memberRepository.advanceReadPosition(
             conversationId = conversation.id,

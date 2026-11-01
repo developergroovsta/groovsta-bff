@@ -75,7 +75,12 @@ class ContentServiceImpl(
                 media = request.media.map {
                     CreatePostMediaUploadRequest(it.fileName, it.contentType, it.sizeBytes)
                 },
-                taggedAccountIds = request.taggedAccountIds
+                taggedAccountIds = request.taggedAccountIds,
+                locationId = request.locationId,
+                commentsEnabled = request.commentsEnabled,
+                hideComments = request.hideComments,
+                hideLikeCount = request.hideLikeCount,
+                hideShareCount = request.hideShareCount
             )
         )
         return ContentUploadResponse(
@@ -93,7 +98,18 @@ class ContentServiceImpl(
         require(media.contentType in videoContentTypes) { "A reel must be MP4, QuickTime, or WebM video" }
         val response = reelService.createUpload(
             accountId,
-            CreateReelUploadRequest(media.fileName, media.contentType, media.sizeBytes, request.caption, request.taggedAccountIds)
+            CreateReelUploadRequest(
+                media.fileName,
+                media.contentType,
+                media.sizeBytes,
+                caption = request.caption,
+                taggedAccountIds = request.taggedAccountIds,
+                locationId = request.locationId,
+                commentsEnabled = request.commentsEnabled,
+                hideComments = request.hideComments,
+                hideLikeCount = request.hideLikeCount,
+                hideShareCount = request.hideShareCount
+            )
         )
         return ContentUploadResponse(
             contentId = response.reelId,

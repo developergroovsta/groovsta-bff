@@ -7,6 +7,7 @@ import com.groovsta.identity.exception.InvalidCredentialsException
 import com.groovsta.identity.exception.InvalidExternalIdentityException
 import com.groovsta.identity.exception.InvalidExternalRegistrationException
 import com.groovsta.identity.exception.InvalidVerificationException
+import com.groovsta.identity.exception.VerificationDeliveryException
 import jakarta.validation.ConstraintViolationException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -73,6 +74,21 @@ class GlobalExceptionHandler {
         "INVALID_VERIFICATION",
         exception.message ?: "Verification failed"
     )
+
+    @ExceptionHandler(VerificationDeliveryException::class)
+    fun verificationDelivery(exception: VerificationDeliveryException): ResponseEntity<ApiError> {
+        logger.error(
+            "verification.delivery.failed errorType={} message={}",
+            exception.cause?.javaClass?.name ?: exception.javaClass.name,
+            exception.cause?.message ?: exception.message,
+            exception
+        )
+        return error(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "EMAIL_DELIVERY_FAILED",
+            "Verification email could not be sent"
+        )
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun validation(exception: MethodArgumentNotValidException): ResponseEntity<ApiError> {

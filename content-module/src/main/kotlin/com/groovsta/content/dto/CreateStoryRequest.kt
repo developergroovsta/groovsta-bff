@@ -14,5 +14,10 @@ data class CreateStoryRequest(
     val linkedContentId: UUID? = null,
     val linkedStoryId: UUID? = null,
     @field:Size(max = 20)
-    val taggedAccountIds: List<UUID> = emptyList()
+    val taggedAccountIds: List<UUID> = emptyList(),
+    val locationId: UUID? = null,
+    val commentsEnabled: Boolean = true,
+    val hideComments: Boolean = false,
+    val hideLikeCount: Boolean = false,
+    val hideShareCount: Boolean = false
 )
